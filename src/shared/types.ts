@@ -36,6 +36,7 @@ export interface Settings {
   includeOriginal?: boolean
   autoCheckUpdates?: boolean
   autoDownloadUpdates?: boolean
+  autoInstallUpdates?: boolean
 }
 export interface RequestLog {
   id: string
@@ -124,5 +125,6 @@ export interface FleetAPI {
   downloadUpdate(): Promise<UpdateState>
   installUpdate(): Promise<void>
   openUpdatePage(): Promise<void>
+  openRepository(): Promise<void>
   onUpdateState(listener: (state: UpdateState) => void): () => void
 }

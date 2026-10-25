@@ -1,11 +1,16 @@
 {
   "name": "fleet-bridge",
   "productName": "舰桥 Fleet Bridge",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "让你选择的模型，驶入 Codex。",
   "main": "out/main/index.js",
   "author": "Fleet Bridge",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaka-looking/fleet-bridge-.git"
+  },
+  "homepage": "https://github.com/kaka-looking/fleet-bridge-",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",

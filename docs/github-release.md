@@ -2,7 +2,7 @@
 
 本文说明舰桥 Fleet Bridge 当前源码的上传、构建与发布方式，依据本项目现有的工作流和发布脚本编写。
 
-当前版本为 `0.1.6`。源码推送与安装包发布是两个独立步骤：主分支推送触发测试，正式版本标签触发 Windows 安装包发布。
+当前版本为 `0.1.7`，公开仓库为 [kaka-looking/fleet-bridge-](https://github.com/kaka-looking/fleet-bridge-)。源码推送与安装包发布是两个独立步骤：主分支推送触发测试，正式版本标签触发 Windows 安装包发布。
 
 ## 1. 上传前准备
 
@@ -27,7 +27,7 @@ npm run test:updates-ui
 
 ## 2. 首次上传源码
 
-先创建一个空的 GitHub 公开仓库。以下示例中的 `YOUR_GITHUB_NAME` 是占位符，必须替换成实际仓库所有者；仓库名不是 `fleet-bridge` 时也要相应调整。
+仓库已创建。现有工作副本无需重新初始化或添加远程地址；以下命令仅供首次创建新的工作副本时参考。
 
 以下命令仅适用于尚未初始化 Git 的本项目目录：
 
@@ -43,7 +43,7 @@ git diff --cached
 ```powershell
 git commit -m "Initial release"
 git branch -M main
-git remote add origin https://github.com/YOUR_GITHUB_NAME/fleet-bridge.git
+git remote add origin https://github.com/kaka-looking/fleet-bridge-.git
 git push -u origin main
 ```
 
@@ -54,8 +54,9 @@ git push -u origin main
 确认主分支测试通过、待发布修改已经提交，再创建与项目版本完全一致的标签：
 
 ```powershell
-git tag v0.1.6
-git push origin v0.1.6
+git tag v0.1.7
+git push origin main
+git push origin v0.1.7
 ```
 
 发布工作流接受 `v数字.数字.数字` 格式的正式标签，并检查它是否与项目配置中的版本一致。普通主分支推送不会自动发布安装包。
@@ -76,9 +77,9 @@ git push origin v0.1.6
 
 | 文件 | 用途 |
 | --- | --- |
-| `Fleet-Bridge-0.1.6-Setup.exe` | Windows 安装版，支持程序内更新 |
-| `Fleet-Bridge-0.1.6-Setup.exe.blockmap` | 安装版的差分下载辅助文件 |
-| `Fleet-Bridge-0.1.6-Windows.exe` | Windows 便携版 |
+| `Fleet-Bridge-0.1.7-Setup.exe` | Windows 安装版，支持程序内更新 |
+| `Fleet-Bridge-0.1.7-Setup.exe.blockmap` | 安装版的差分下载辅助文件 |
+| `Fleet-Bridge-0.1.7-Windows.exe` | Windows 便携版 |
 | `latest.yml` | 安装版更新清单，包含版本与 SHA512 |
 | `SHA256SUMS.txt` | 上述发布文件的 SHA256 校验值 |
 
@@ -88,7 +89,7 @@ git push origin v0.1.6
 
 ## 4. 后续版本
 
-先提交本次功能或修复，确保工作区干净，再增加版本并发布。例如，从 `0.1.6` 发布下一个补丁版本 `0.1.7`：
+本次源码已将版本更新至 `0.1.7`，提交修改后按上一节推送同名标签即可，不要再次运行版本递增。后续版本例如从 `0.1.7` 发布下一个补丁版本 `0.1.8`：
 
 ```powershell
 git add .
@@ -97,7 +98,7 @@ git diff --cached
 git commit -m "Describe the changes"
 npm version patch -m "Release %s"
 git push origin main
-git push origin v0.1.7
+git push origin v0.1.8
 ```
 
 `npm version patch` 更新项目配置和锁文件中的版本，并创建版本提交与标签。实际版本不是上述示例时，最后推送的标签也必须改为相应版本。
@@ -106,9 +107,11 @@ git push origin v0.1.7
 
 ## 5. 用户更新方式
 
-从已配置仓库的正式安装版启动后，程序默认在约 15 秒后检查更新，运行期间每 6 小时再次检查。自动检查与自动下载都可在设置中关闭。
+正式安装版默认开启自动更新，启动约 15 秒后检查，运行期间每 6 小时再次检查。新配置及没有自动安装字段的旧配置默认启用检查、下载和退出安装；用户已明确关闭自动更新、自动检查或自动下载时，迁移后保留关闭选择，不强制重新开启。
 
-发现新版后，程序可以后台下载并显示进度。下载完成后由用户选择重启安装；如果还有模型请求进行中，程序会要求先结束请求，不会直接中断正在进行的调用。
+重新开启「自动更新」并保存，会同时启用自动检查与下载并立即检查一次。发现新版后后台下载，SHA512 校验成功后等待用户真正退出程序；通过托盘菜单「退出舰桥」退出时静默安装，不弹出安装向导、不自动重新启动，下次打开使用新版。右上角关闭只收起到托盘，不安装、不打断代理。有模型请求进行中时不触发自动安装，请先完成请求再退出。
+
+关闭「自动更新」后，已下载的更新不会在退出时自动安装，仍可选择「重启并安装」。关闭自动检查或自动下载也会关闭自动安装。手动重启安装前同样检查进行中的模型请求。下载或校验失败不执行安装，界面提供重试。
 
 便携版不执行自身替换安装，提供发布页入口。开发模式、未配置更新源的构建也不会执行安装更新。
 
@@ -119,16 +122,15 @@ git push origin v0.1.7
 本地打包使用项目自身的发布脚本。需要生成可用的 GitHub 更新配置时，先设置实际仓库地址：
 
 ```powershell
-$env:GITHUB_REPOSITORY = "YOUR_GITHUB_NAME/fleet-bridge"
 npm run dist -- --require-repository
-node scripts/check-release.cjs v0.1.6 --assets
+node scripts/check-release.cjs v0.1.7 --assets
 ```
 
-也可以在项目配置中填写实际的 `repository.url`。脚本优先读取 `GITHUB_REPOSITORY`，未设置时再读取项目配置；示例账号只是占位符，不能直接作为正式更新源。
+项目配置已填写实际的 `repository.url`，本地构建无需额外设置更新仓库。脚本优先读取 `GITHUB_REPOSITORY`，未设置时读取项目配置；Fork 发布时应相应修改仓库地址与源码入口。
 
 当前输出目录为项目下的 `release/ui-update/`。本地构建不会自动上传这些文件；正式发布由标签工作流执行。
 
-不设置仓库地址时，普通本地打包仍可运行，但程序没有可用的 GitHub 更新源。添加 `--require-repository` 会在缺少仓库地址时停止打包，避免误发布未配置更新的版本。
+删除项目仓库配置且不设置环境变量时，普通本地打包仍可运行，但程序没有可用的 GitHub 更新源。添加 `--require-repository` 会在缺少仓库地址时停止打包，避免误发布未配置更新的版本。
 
 只需要便携版时可运行：
 
@@ -144,5 +146,5 @@ npm run dist:portable
 - Actions 的测试、构建、发布文件核验步骤必须通过。
 - Release 中应同时存在安装版、便携版、差分文件、更新清单和校验文件。
 - 在安装版中确认服务商配置、模型连接和手动检查更新正常。
-- 本地下载测试只验证隔离环境中的更新发现、校验与重试，不执行真实安装；正式仓库的跨版本在线升级需要另外实际验收。
+- 本地下载测试覆盖隔离环境中的更新发现、校验、重试、缓存恢复、退出安装的静默与不重启参数，不执行真实安装；正式仓库的跨版本在线升级需要另外实际验收。
 - 不在源码仓库中提交本地测试产物、构建缓存或带有真实凭据的数据。

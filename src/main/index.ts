@@ -10,6 +10,7 @@ import { formatLogsCsv } from './log-export'
 import { autoUpdater } from 'electron-updater'
 import { Updates } from './updates'
 import type { Settings, WindowState } from '../shared/types'
+import { REPOSITORY_URL } from '../shared/project'
 
 if (process.env.FLEET_DATA_DIR) app.setPath('userData', process.env.FLEET_DATA_DIR)
 app.commandLine.appendSwitch('disable-lcd-text')
@@ -18,6 +19,7 @@ let tray: Tray | undefined
 let runtime: Runtime
 let updates: Updates | undefined
 let quitting = false
+let quitPending = false
 const iconPath = () => join(app.getAppPath(), 'resources', 'icon.png')
 const single = app.requestSingleInstanceLock()
 if (!single) app.quit()
@@ -69,7 +71,9 @@ else {
     const methods = ['snapshot', 'saveProvider', 'saveAndConnectProvider', 'deleteProvider', 'selectProvider', 'setProviderEnabled', 'setOriginalEnabled', 'refreshOriginal', 'enableMaxEffort', 'testProvider', 'discoverModels', 'discoverModelDetails', 'setGateway', 'connectCodex', 'restoreCodex', 'saveSettings', 'clearLogs'] as const
     for (const method of methods) ipcMain.handle(`fleet:${method}`, async (event, ...args) => {
       if (event.sender !== window?.webContents) throw new Error('非法调用来源。')
+      const previousSettings = store.settings
       const result = await (runtime[method] as (...params: any[]) => any).apply(runtime, args)
+      if (method === 'saveSettings') updates?.settingsChanged(previousSettings)
       if (method === 'saveSettings' && !process.env.FLEET_DATA_DIR) app.setLoginItemSettings({
         openAtLogin: (args[0] as Settings).launchAtLogin,
         path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath,
@@ -88,6 +92,10 @@ else {
       return true
     })
     ipcMain.handle('fleet:openCodex', () => shell.openExternal('codex://'))
+    ipcMain.handle('fleet:openRepository', event => {
+      if (event.sender !== window?.webContents) throw new Error('非法调用来源。')
+      return shell.openExternal(REPOSITORY_URL)
+    })
     ipcMain.handle('fleet:windowState', event => {
       if (event.sender !== window?.webContents) throw new Error('非法调用来源。')
       return windowState()
@@ -146,7 +154,14 @@ app.on('window-all-closed', () => { /* Keep the local gateway running in the tra
 app.on('before-quit', event => {
   updates?.stop()
   if (!quitting && runtime) {
-    event.preventDefault(); quitting = true
-    void runtime.gateway.stop().finally(() => { tray?.destroy(); app.quit() })
+    event.preventDefault()
+    if (quitPending) return
+    quitPending = true
+    // Only a real exit installs an enabled, verified update. Hiding the window
+    // leaves the gateway running. An active model request defers the update.
+    void (async () => {
+      await updates?.installOnQuit().catch(() => {})
+      await runtime.gateway.stop()
+    })().finally(() => { quitting = true; tray?.destroy(); app.quit() })
   }
 })

@@ -31,6 +31,7 @@ const api: FleetAPI = {
   downloadUpdate: () => invoke('downloadUpdate'),
   installUpdate: () => invoke('installUpdate'),
   openUpdatePage: () => invoke('openUpdatePage'),
+  openRepository: () => invoke('openRepository'),
   onUpdateState: listener => {
     const handle = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]) => listener(state)
     ipcRenderer.on('fleet:update-state', handle)

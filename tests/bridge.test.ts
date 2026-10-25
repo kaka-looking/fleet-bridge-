@@ -73,11 +73,39 @@ describe('configuration and persistence', () => {
     original.settings = { port: 24680, autoStart: false, launchAtLogin: false }
     writeFileSync(statePath, JSON.stringify(original))
     const migrated = new Store(store.directory, cipher)
-    expect(migrated.settings).toMatchObject({ port: 24680, theme: 'system', timeout: 120 })
+    expect(migrated.settings).toMatchObject({ port: 24680, theme: 'system', timeout: 120, autoCheckUpdates: true, autoDownloadUpdates: true, autoInstallUpdates: true })
     migrated.setSettings({ ...migrated.settings, theme: 'dark', timeout: 300 })
     expect(new Store(store.directory, cipher).settings).toMatchObject({ theme: 'dark', timeout: 300 })
     expect(() => migrated.setSettings({ ...migrated.settings, timeout: 0 })).toThrow('超时')
     expect(migrated.settings.timeout).toBe(300)
+  })
+  it('defaults to automatic updates and turns installation off when its prerequisites are disabled', () => {
+    const store = createStore()
+    expect(store.settings.autoInstallUpdates).toBe(true)
+    store.setSettings({ ...store.settings, autoCheckUpdates: true, autoDownloadUpdates: true, autoInstallUpdates: true })
+    expect(new Store(store.directory, cipher).settings.autoInstallUpdates).toBe(true)
+    store.setSettings({ ...store.settings, theme: 'dark' })
+    expect(store.settings.autoInstallUpdates).toBe(true)
+    store.setSettings({ ...store.settings, autoDownloadUpdates: false })
+    expect(new Store(store.directory, cipher).settings).toMatchObject({ autoInstallUpdates: false, autoDownloadUpdates: false })
+    store.setSettings({ ...store.settings, autoCheckUpdates: false, autoDownloadUpdates: true, autoInstallUpdates: true })
+    expect(store.settings.autoInstallUpdates).toBe(false)
+  })
+  it.each([
+    { autoInstallUpdates: false },
+    { autoCheckUpdates: false },
+    { autoDownloadUpdates: false }
+  ])('preserves saved update opt-outs during settings migration: %j', preferences => {
+    const store = createStore()
+    const file = join(store.directory, 'state.json')
+    const state = JSON.parse(readFileSync(file, 'utf8'))
+    state.settings = { port: 24680, autoStart: false, launchAtLogin: false, ...preferences }
+    writeFileSync(file, JSON.stringify(state))
+    const migrated = new Store(store.directory, cipher)
+    expect(migrated.settings.autoInstallUpdates).toBe(false)
+    expect(migrated.settings).toMatchObject(preferences)
+    migrated.setSettings({ ...migrated.settings, theme: 'dark' })
+    expect(new Store(store.directory, cipher).settings.autoInstallUpdates).toBe(false)
   })
   it('keeps secrets out of snapshots and retains keys on edit', () => {
     const store = createStore()

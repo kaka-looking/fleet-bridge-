@@ -3,6 +3,9 @@ import { createRequire } from 'node:module'
 import { describe, it, expect, vi } from 'vitest'
 import { Updates, githubRepository } from '../src/main/updates'
 import type { Settings, UpdateState } from '../src/shared/types'
+import packageInfo from '../package.json'
+import lockInfo from '../package-lock.json'
+import { REPOSITORY_URL } from '../src/shared/project'
 
 const { releaseConfiguration, validateTag } = createRequire(import.meta.url)('../scripts/release-config.cjs')
 function fixture(options = {}, initial: Partial<Settings> = {}) {
@@ -52,6 +55,91 @@ describe('GitHub application updates', () => {
     expect(installation.prepare).toHaveBeenCalledTimes(1)
     expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(false, true)
   })
+  it('defaults to silent installation on real exit without restarting the app', async () => {
+    const { backend, updates, installation } = fixture()
+    await updates.check()
+    expect(updates.snapshot().message).toContain('下次启动')
+    // Downloading never stops the gateway or installs while the app is in use.
+    expect(installation.prepare).not.toHaveBeenCalled()
+    await Promise.all([updates.installOnQuit(), updates.installOnQuit()])
+    expect(installation.prepare).toHaveBeenCalledTimes(1)
+    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, false)
+  })
+  it.each([
+    { autoInstallUpdates: false },
+    { autoInstallUpdates: true, autoCheckUpdates: false },
+    { autoInstallUpdates: true, autoDownloadUpdates: false }
+  ])('does not install on exit when automatic updating is disabled: %j', async settings => {
+    const { backend, updates, installation } = fixture({}, settings)
+    await updates.check()
+    if (updates.snapshot().phase === 'available') await updates.download()
+    await updates.installOnQuit()
+    expect(backend.quitAndInstall).not.toHaveBeenCalled()
+    expect(installation.prepare).not.toHaveBeenCalled()
+  })
+  it('defers automatic installation during a model request and permits it on a later idle exit', async () => {
+    const { backend, updates, installation } = fixture({}, { autoInstallUpdates: true })
+    await updates.installOnQuit()
+    await updates.check()
+    installation.inflight.mockReturnValue(1)
+    await updates.installOnQuit()
+    expect(updates.snapshot().phase).toBe('downloaded')
+    expect(installation.prepare).not.toHaveBeenCalled()
+    installation.inflight.mockReturnValue(0)
+    await updates.installOnQuit()
+    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, false)
+  })
+  it('honors disabling automatic installation after an update has already downloaded', async () => {
+    const { backend, updates, settings } = fixture({}, { autoInstallUpdates: true })
+    await updates.check()
+    const previous = { ...settings }
+    settings.autoInstallUpdates = false
+    updates.settingsChanged(previous)
+    expect(updates.snapshot().message).toContain('手动')
+    await updates.installOnQuit()
+    expect(backend.quitAndInstall).not.toHaveBeenCalled()
+    // Manual restart remains available even when automatic installation is off.
+    await updates.install()
+    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(false, true)
+  })
+  it('checks immediately when automatic updating is enabled and uses an already downloaded update', async () => {
+    const { backend, updates, settings } = fixture({}, { autoCheckUpdates: false, autoDownloadUpdates: false })
+    const previous = { ...settings }
+    Object.assign(settings, { autoCheckUpdates: true, autoDownloadUpdates: true, autoInstallUpdates: true })
+    updates.settingsChanged(previous)
+    await vi.waitFor(() => expect(updates.snapshot().phase).toBe('downloaded'))
+    expect(backend.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(backend.quitAndInstall).not.toHaveBeenCalled()
+    await updates.installOnQuit()
+    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, false)
+  })
+  it('downloads an available update immediately when automatic downloading is enabled', async () => {
+    const { backend, updates, settings } = fixture({}, { autoDownloadUpdates: false })
+    await updates.check()
+    const previous = { ...settings }
+    settings.autoDownloadUpdates = true
+    updates.settingsChanged(previous)
+    await vi.waitFor(() => expect(updates.snapshot().phase).toBe('downloaded'))
+    expect(backend.downloadUpdate).toHaveBeenCalledTimes(1)
+    expect(backend.quitAndInstall).not.toHaveBeenCalled()
+  })
+  it('never installs an unverified or failed download on exit', async () => {
+    const { backend, updates, installation } = fixture({}, { autoInstallUpdates: true })
+    backend.downloadUpdate.mockRejectedValueOnce(new Error('checksum mismatch'))
+    await updates.check()
+    await updates.installOnQuit()
+    expect(backend.quitAndInstall).not.toHaveBeenCalled()
+    expect(installation.prepare).not.toHaveBeenCalled()
+  })
+  it('rolls back a failed automatic installation without leaving the app in an installing state', async () => {
+    const { backend, updates, installation } = fixture({}, { autoInstallUpdates: true })
+    backend.quitAndInstall.mockImplementationOnce(() => { throw new Error('installer failed') })
+    await updates.check()
+    await expect(updates.installOnQuit()).rejects.toThrow('installer failed')
+    expect(installation.rollback).toHaveBeenCalledTimes(1)
+    expect(updates.snapshot().phase).toBe('error')
+    updates.stop()
+  })
   it('recovers the proxy if the installer emits an asynchronous error', async () => {
     const { backend, updates, installation } = fixture()
     await updates.check(); await updates.install()
@@ -75,7 +163,9 @@ describe('GitHub application updates', () => {
     const { backend, updates } = fixture(options)
     expect(updates.snapshot()).toMatchObject({ mode, phase: 'disabled' })
     await updates.check(); await updates.download()
+    await updates.installOnQuit()
     expect(backend.checkForUpdates).not.toHaveBeenCalled()
+    expect(backend.quitAndInstall).not.toHaveBeenCalled()
     await expect(updates.install()).rejects.toThrow()
   })
   it('checks after startup and every six hours, respecting the persisted opt-out', async () => {
@@ -101,5 +191,18 @@ describe('GitHub application updates', () => {
     expect(() => releaseConfiguration({ GITHUB_REPOSITORY: 'https://evil.test/a/b' }, {})).toThrow()
     expect(() => validateTag('v0.1.6', '0.1.6')).not.toThrow()
     expect(() => validateTag('v0.1.5', '0.1.6')).toThrow()
+  })
+  it('configures local release builds and the source link for the actual public repository', () => {
+    expect(packageInfo.version).toBe(lockInfo.version)
+    expect(packageInfo.version).toBe(lockInfo.packages[''].version)
+    expect(packageInfo.license).toBe('SEE LICENSE IN LICENSE')
+    expect(lockInfo.packages[''].license).toBe(packageInfo.license)
+    expect(githubRepository(packageInfo.repository)).toBe('kaka-looking/fleet-bridge-')
+    expect(REPOSITORY_URL).toBe('https://github.com/kaka-looking/fleet-bridge-')
+    expect(releaseConfiguration({}, packageInfo)).toMatchObject({
+      publish: [{ provider: 'github', owner: 'kaka-looking', repo: 'fleet-bridge-' }],
+      extraMetadata: { repository: { url: `${REPOSITORY_URL}.git` } }
+    })
+    expect(() => validateTag(`v${packageInfo.version}`, packageInfo.version)).not.toThrow()
   })
 })

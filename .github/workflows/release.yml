@@ -24,6 +24,7 @@ jobs:
       - run: npm run test:updates
       - name: Build installer, portable app and update manifest
         run: npm run dist -- --require-repository
+      - run: npm run test:updates-ui
       - name: Verify update assets and checksums
         run: node scripts/check-release.cjs --assets
       - name: Publish all assets together

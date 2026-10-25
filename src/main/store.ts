@@ -36,7 +36,10 @@ export class Store {
       settings: { port: 24680, autoStart: true, launchAtLogin: false, theme: 'system', timeout: 120 }, gatewayToken: randomBytes(32).toString('hex'), logs: []
     }
     if (this.state.version !== 1 || !Array.isArray(this.state.providers)) throw new Error('本地配置格式无法识别，请保留数据文件后检查。')
-    this.state.settings = { theme: 'system', timeout: 120, ...this.state.settings }
+    const settings = this.state.settings
+    const autoCheckUpdates = settings.autoCheckUpdates !== false
+    const autoDownloadUpdates = settings.autoDownloadUpdates !== false
+    this.state.settings = { theme: 'system', timeout: 120, ...settings, autoCheckUpdates, autoDownloadUpdates, autoInstallUpdates: autoCheckUpdates && autoDownloadUpdates && settings.autoInstallUpdates !== false }
     this.persist()
   }
   private persist() { atomicWrite(this.file, JSON.stringify(this.state, null, 2)) }
@@ -121,7 +124,10 @@ export class Store {
     if (!Number.isInteger(timeout) || timeout < 10 || timeout > 600) throw new Error('超时时间须为 10–600 秒。')
     const theme = settings.theme ?? 'system'
     if (!['system', 'light', 'dark'].includes(theme)) throw new Error('无效的外观设置。')
-    this.state.settings = { port: settings.port, autoStart: Boolean(settings.autoStart), launchAtLogin: Boolean(settings.launchAtLogin), theme, timeout, includeOriginal: settings.includeOriginal ?? this.state.settings.includeOriginal ?? true, autoCheckUpdates: settings.autoCheckUpdates ?? this.state.settings.autoCheckUpdates ?? true, autoDownloadUpdates: settings.autoDownloadUpdates ?? this.state.settings.autoDownloadUpdates ?? true }; this.persist()
+    const autoCheckUpdates = settings.autoCheckUpdates ?? this.state.settings.autoCheckUpdates ?? true
+    const autoDownloadUpdates = settings.autoDownloadUpdates ?? this.state.settings.autoDownloadUpdates ?? true
+    const autoInstallUpdates = autoCheckUpdates && autoDownloadUpdates && (settings.autoInstallUpdates ?? this.state.settings.autoInstallUpdates ?? true)
+    this.state.settings = { port: settings.port, autoStart: Boolean(settings.autoStart), launchAtLogin: Boolean(settings.launchAtLogin), theme, timeout, includeOriginal: settings.includeOriginal ?? this.state.settings.includeOriginal ?? true, autoCheckUpdates, autoDownloadUpdates, autoInstallUpdates }; this.persist()
   }
   saveTest(id: string, result: { ok: boolean; message: string; latency: number }) {
     const provider = this.state.providers.find(p => p.id === id)

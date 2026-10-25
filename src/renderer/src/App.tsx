@@ -2,13 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Reac
 import {
   Activity, AlertCircle, ArrowDownUp, ArrowRight, Box, CalendarDays, Check, CheckCircle2,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, Copy, Database, Download,
-  ExternalLink, Eye, EyeOff, FileKey2, FolderOpen, Grid2X2, House, Info, List, LoaderCircle,
+  ExternalLink, Eye, EyeOff, FileKey2, FolderOpen, Github, Grid2X2, House, Info, List, LoaderCircle,
   LockKeyhole, Minus, MoreHorizontal, MoreVertical, Network, Pencil, Plus, RefreshCw,
   RotateCcw, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal, Square,
   Star, Sun, Trash2, Unplug, X, Zap
 } from 'lucide-react'
 import type { ModelCapabilities, Provider, ProviderInput, ProviderKind, RequestLog, Settings, Snapshot, UpdateState } from '../../shared/types'
 import { PRESETS } from '../../shared/presets'
+import { REPOSITORY_URL } from '../../shared/project'
 import { highestEffort, mergeCapabilities, modelCapabilities, reasoningProfile, REASONING_EFFORTS } from '../../shared/model-capabilities'
 import { failureStageLabels, knownUsage, requestStatusHint, requestStatusLabel, upstreamOutcomeLabel } from '../../shared/request-log'
 import fleetLogo from './assets/fleet-logo.png'
@@ -37,6 +38,9 @@ type View = 'dashboard' | 'logs' | 'providers' | 'settings'
 type Act = (id: string, action: () => Promise<Snapshot>, success?: string) => Promise<void>
 
 function Brand() { return <img className="brand-icon" src={fleetLogo} alt="舰桥 Fleet Bridge"/> }
+function RepositoryLink({ notify }: { notify: (text: string, error?: boolean) => void }) {
+  return <a className="repository-link" href={REPOSITORY_URL} target="_blank" rel="noopener noreferrer" aria-label="GitHub 开源仓库" title="在浏览器中打开 GitHub 开源仓库" onClick={event => { event.preventDefault(); void api.openRepository().catch(error => notify(cleanError(error), true)) }}><Github size={16}/></a>
+}
 function ProviderMark({ kind, small = false, card = false }: { kind: ProviderKind; small?: boolean; card?: boolean }) {
   return kind === 'custom' ? <span className={`provider-mark custom ${small ? 'small' : ''}`}><Plus/></span> : <img className={`provider-mark ${small ? 'small' : ''}`} src={(card ? cardLogos : logos)[kind]} alt=""/>
 }
@@ -125,7 +129,7 @@ export default function App() {
           ['dashboard', House, '工作台'], ['logs', Clock3, '连接记录'], ['providers', Box, '服务商'], ['settings', SettingsIcon, '设置']
         ] as const).map(([id, Icon, title]) => <button className={view === id ? 'selected' : ''} key={id} onClick={() => setView(id)}><Icon size={21} fill={view === id && (id === 'dashboard' || id === 'settings') ? 'currentColor' : 'none'}/>{title}</button>)}</nav>
         <div className="sidebar-landscape"/>
-        <div className="sidebar-bottom"><button className="help-link" onClick={() => setHelp(true)}><CircleHelp size={19}/>帮助文档<ExternalLink size={14}/></button><p>舰桥 Fleet Bridge<br/>v{snapshot?.version ?? '0.1.0'}</p></div>
+        <div className="sidebar-bottom"><button className="help-link" onClick={() => setHelp(true)}><CircleHelp size={19}/>帮助文档<ExternalLink size={14}/></button><p>舰桥 Fleet Bridge<br/><span className="app-version"><span>v{snapshot?.version ?? '…'}</span><RepositoryLink notify={notify}/></span></p></div>
       </aside>
       <div className="titlebar-drag-region" aria-hidden="true"/>
       <div className="window-controls"><button aria-label="最小化" title="最小化" onClick={() => void api.window('minimize').catch(error => notify(cleanError(error), true))}><Minus size={15}/></button><button aria-label={maximized ? '还原窗口' : '最大化'} title={maximized ? '还原窗口' : '最大化'} onClick={() => void api.window('maximize').catch(error => notify(cleanError(error), true))}>{maximized ? <Copy size={12}/> : <Square size={12}/>}</button><button aria-label="收起到托盘" title="收起到托盘" onClick={() => void api.window('close').catch(error => notify(cleanError(error), true))}><X size={16}/></button></div>
@@ -134,7 +138,7 @@ export default function App() {
           <div className="header-actions"><button className={`gateway-pill ${snapshot?.gateway.running ? 'online' : ''}`} disabled={!snapshot || Boolean(busy)} onClick={() => snapshot && void act('gateway', () => api.setGateway(!snapshot.gateway.running))} title={snapshot?.gateway.url + ' · 点击启动或停止代理'}><i/>{snapshot?.gateway.running ? '本地代理在线' : '本地代理离线'}</button>
           {view === 'logs' ? <><button className="button" disabled={!snapshot?.logs.length} onClick={() => void api.exportLogs().then(saved => { if (saved) notify('连接记录已导出') }).catch(error => notify(cleanError(error), true))}><Download size={17}/>导出记录</button><button className="button danger" disabled={!snapshot?.logs.length || Boolean(busy)} onClick={() => void act('clear', () => api.clearLogs(), '连接记录已清空')}><Trash2 size={17}/>清空记录</button></> : <button className="button primary" onClick={() => setEditor({ kind: 'deepseek' })}><Plus size={20}/>添加服务商</button>}</div>
         </header>
-        {updates && ['available', 'downloaded'].includes(updates.phase) && view !== 'settings' && <div className="update-banner" role="status"><Download size={18}/><span>{updates.phase === 'downloaded' ? `新版 v${updates.version} 已下载，可以重启安装。` : `发现新版 v${updates.version}。`}</span><button className="text-button" onClick={() => setView('settings')}>查看更新<ArrowRight size={14}/></button></div>}
+        {updates && ['available', 'downloaded'].includes(updates.phase) && view !== 'settings' && <div className="update-banner" role="status"><Download size={18}/><span>{updates.phase === 'downloaded' ? snapshot?.settings.autoInstallUpdates !== false ? `新版 v${updates.version} 已下载，退出后自动安装，下次启动生效。` : `新版 v${updates.version} 已下载，可以重启安装。` : `发现新版 v${updates.version}。`}</span><button className="text-button" onClick={() => setView('settings')}>查看更新<ArrowRight size={14}/></button></div>}
         {!snapshot ? <div className="loading-state">{fatal ? <><AlertCircle size={32}/><p>{fatal}</p><button className="button" onClick={() => void refresh()}>重新加载</button></> : <><LoaderCircle className="spin" size={28}/><p>正在准备你的工作台…</p></>}</div> : <>
           {(view === 'dashboard' || view === 'providers') && <>
             {view === 'dashboard' && <><section className="hero dashboard-hero"><div className="hero-copy"><div className="eyebrow">FLEET BRIDGE</div><h2>让 <em>Codex</em> 接入<br/>你自己的模型舰队</h2><p>连接 DeepSeek、GLM、Kimi 以及更多模型服务，<br/>在本地构建属于你的 AI 能力桥梁。</p><div className="hero-providers">{(['deepseek', 'glm', 'kimi', 'custom'] as ProviderKind[]).map(kind => <button key={kind} onClick={() => setEditor({ kind })}><ProviderMark kind={kind} small/>{names[kind]}</button>)}</div></div></section><DashboardStats snapshot={snapshot} active={active} onProviders={() => setView('providers')} onLogs={() => setView('logs')} onEdit={() => active ? setEditor({ provider: active }) : setEditor({ kind: 'deepseek' })}/></>}
@@ -308,11 +312,17 @@ function SettingsView({ snapshot, updates, busy, onSave, onSelect, copy, notify 
   </div>
 }
 
-function UpdateControls({ state, settings, onSetting, notify }: { state?: UpdateState; settings: Settings; onSetting: (key: 'autoCheckUpdates' | 'autoDownloadUpdates', value: boolean) => void; notify: (text: string, error?: boolean) => void }) {
+function UpdateControls({ state, settings, onSetting, notify }: { state?: UpdateState; settings: Settings; onSetting: (key: 'autoCheckUpdates' | 'autoDownloadUpdates' | 'autoInstallUpdates', value: boolean) => void; notify: (text: string, error?: boolean) => void }) {
   const pending = state && ['checking', 'downloading', 'installing'].includes(state.phase)
+  const automaticSupported = Boolean(state && ['installer', 'development'].includes(state.mode))
   const run = (action: () => Promise<unknown>) => void action().catch(error => notify(cleanError(error), true))
+  const preference = (key: 'autoCheckUpdates' | 'autoDownloadUpdates' | 'autoInstallUpdates', value: boolean) => {
+    if (key === 'autoInstallUpdates' && value) { onSetting('autoCheckUpdates', true); onSetting('autoDownloadUpdates', true) }
+    else if (key !== 'autoInstallUpdates' && !value) onSetting('autoInstallUpdates', false)
+    onSetting(key, value)
+  }
   return <div className="update-settings" aria-label="应用更新">
-    <div className="update-heading"><strong>应用更新 <small>v{state?.currentVersion ?? '…'}</small></strong>{state?.releasesUrl && <button className="text-button" type="button" onClick={() => run(api.openUpdatePage)}>GitHub 发布页<ExternalLink size={13}/></button>}</div>
+    <div className="update-heading"><strong>应用更新 <small>v{state?.currentVersion ?? '…'}</small><RepositoryLink notify={notify}/></strong>{state?.releasesUrl && <button className="text-button" type="button" onClick={() => run(api.openUpdatePage)}>GitHub 发布页<ExternalLink size={13}/></button>}</div>
     <p className={state?.phase === 'error' ? 'update-error' : ''} role="status">{state?.message ?? '正在读取更新状态…'}</p>
     {state?.phase === 'downloading' && <progress aria-label="更新下载进度" max={100} value={state.percent ?? 0}/>}
     <div className="update-actions">
@@ -321,9 +331,10 @@ function UpdateControls({ state, settings, onSetting, notify }: { state?: Update
       {state?.phase === 'downloaded' && <button className="button primary" type="button" onClick={() => run(api.installUpdate)}><RefreshCw size={15}/>重启并安装 v{state.version}</button>}
       {state?.phase === 'downloading' && <span>{(state.percent ?? 0).toFixed(1)}%</span>}
     </div>
-    <label className="update-preference"><span>启动后及运行期间自动检查</span><Toggle label="自动检查更新" checked={settings.autoCheckUpdates !== false} onChange={value => onSetting('autoCheckUpdates', value)}/></label>
-    <label className="update-preference"><span>发现新版后自动下载</span><Toggle label="自动下载更新" checked={settings.autoDownloadUpdates !== false} onChange={value => onSetting('autoDownloadUpdates', value)}/></label>
-    <p>下载期间可继续使用；保存设置后生效。安装前请先结束模型请求，程序会保留本地配置。</p>
+    <label className="update-preference"><span>自动更新<small>退出时安装，下次启动使用新版</small></span><Toggle label="自动更新" checked={automaticSupported && settings.autoInstallUpdates !== false} disabled={!automaticSupported} onChange={value => preference('autoInstallUpdates', value)}/></label>
+    <label className="update-preference"><span>启动后及运行期间自动检查</span><Toggle label="自动检查更新" checked={settings.autoCheckUpdates !== false} onChange={value => preference('autoCheckUpdates', value)}/></label>
+    <label className="update-preference"><span>发现新版后自动下载</span><Toggle label="自动下载更新" checked={settings.autoDownloadUpdates !== false} onChange={value => preference('autoDownloadUpdates', value)}/></label>
+    <p>保存设置后生效。安装版默认开启自动更新，可随时关闭；下载不打断模型请求。从托盘选择「退出舰桥」时静默安装，不自动重启；收起到托盘不会安装。便携版请下载安装版以使用自动更新，本地配置会保留。</p>
   </div>
 }
 
