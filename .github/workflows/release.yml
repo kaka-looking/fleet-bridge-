@@ -1,0 +1,53 @@
+name: Release Windows
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node scripts/check-release.cjs
+      - run: npm test
+      - run: npm run test:updates
+      - name: Build installer, portable app and update manifest
+        run: npm run dist -- --require-repository
+      - name: Verify update assets and checksums
+        run: node scripts/check-release.cjs --assets
+      - name: Publish all assets together
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $releaseTag = $env:GITHUB_REF_NAME
+          $releaseVersion = node -p "require('./package.json').version"
+          $releaseFiles = @(
+            "release/ui-update/Fleet-Bridge-$releaseVersion-Setup.exe",
+            "release/ui-update/Fleet-Bridge-$releaseVersion-Setup.exe.blockmap",
+            "release/ui-update/Fleet-Bridge-$releaseVersion-Windows.exe",
+            "release/ui-update/latest.yml",
+            "release/ui-update/SHA256SUMS.txt"
+          )
+          $existingRelease = gh release view $releaseTag --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if (-not ($existingRelease | ConvertFrom-Json).isDraft) { throw "该正式版本已经发布；请增加版本号，不能覆盖现有安装包。" }
+          } else {
+            gh release create $releaseTag --repo $env:GITHUB_REPOSITORY --verify-tag --draft --title "舰桥 $releaseTag" --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw "创建草稿 Release 失败。" }
+          }
+          gh release upload $releaseTag @releaseFiles --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw "上传失败，保留草稿，避免用户收到不完整更新。" }
+          gh release edit $releaseTag --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw "发布失败。" }

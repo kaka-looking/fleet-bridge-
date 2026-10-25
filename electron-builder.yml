@@ -1,0 +1,30 @@
+appId: dev.fleet.bridge
+productName: Fleet Bridge
+directories:
+  output: release/ui-update
+files:
+  - out/**/*
+  - package.json
+  - LICENSE
+  - resources/**/*
+asar: true
+electronDist: node_modules/electron/dist
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: Fleet-Bridge-${version}-Windows.${ext}
+  signExecutable: false
+nsis:
+  artifactName: Fleet-Bridge-${version}-Setup.exe
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+portable:
+  artifactName: Fleet-Bridge-${version}-Windows.exe

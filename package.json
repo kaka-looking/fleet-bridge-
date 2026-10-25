@@ -1,0 +1,49 @@
+{
+  "name": "fleet-bridge",
+  "productName": "舰桥 Fleet Bridge",
+  "version": "0.1.6",
+  "description": "让你选择的模型，驶入 Codex。",
+  "main": "out/main/index.js",
+  "author": "Fleet Bridge",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:desktop": "node scripts/desktop-smoke.cjs",
+    "test:visual": "node scripts/visual-review.cjs",
+    "test:window": "node scripts/window-smoke.cjs",
+    "test:portable": "node scripts/portable-smoke.cjs",
+    "test:reasoning": "node scripts/reasoning-smoke.cjs",
+    "test:coexistence": "node scripts/coexistence-smoke.cjs",
+    "test:logs-branding": "node scripts/logs-branding-smoke.cjs",
+    "test:updates": "node scripts/update-download-smoke.cjs",
+    "test:updates-ui": "node scripts/updates-ui-smoke.cjs",
+    "release:check": "node scripts/check-release.cjs",
+    "dist:portable": "npm run build && node scripts/package.cjs --portable-only",
+    "dist": "npm run build && node scripts/package.cjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "smol-toml": "^1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^3.1.0",
+    "playwright": "^1.55.0",
+    "typescript": "^5.9.2",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4",
+    "yaml": "2.9.1"
+  }
+}
