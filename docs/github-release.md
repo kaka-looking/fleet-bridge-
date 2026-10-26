@@ -2,7 +2,7 @@
 
 本文说明舰桥 Fleet Bridge 当前源码的上传、构建与发布方式，依据本项目现有的工作流和发布脚本编写。
 
-当前版本为 `0.1.8`，公开仓库为 [kaka-looking/fleet-bridge-](https://github.com/kaka-looking/fleet-bridge-)。源码推送与安装包发布是两个独立步骤：主分支推送触发测试，正式版本标签触发 Windows 安装包发布。
+当前版本为 `0.1.9`，公开仓库为 [kaka-looking/fleet-bridge-](https://github.com/kaka-looking/fleet-bridge-)。源码推送与安装包发布是两个独立步骤：主分支推送触发测试，正式版本标签触发 Windows 安装包发布。
 
 ## 1. 上传前准备
 
@@ -55,9 +55,9 @@ git push -u origin main
 确认主分支测试通过、待发布修改已经提交，再创建与项目版本完全一致的标签：
 
 ```powershell
-git tag v0.1.8
+git tag v0.1.9
 git push origin main
-git push origin v0.1.8
+git push origin v0.1.9
 ```
 
 发布工作流接受 `v数字.数字.数字` 格式的正式标签，并检查它是否与项目配置中的版本一致。普通主分支推送不会自动发布安装包。
@@ -78,9 +78,9 @@ git push origin v0.1.8
 
 | 文件 | 用途 |
 | --- | --- |
-| `Fleet-Bridge-0.1.8-Setup.exe` | Windows 安装版，支持程序内更新 |
-| `Fleet-Bridge-0.1.8-Setup.exe.blockmap` | 安装版的差分下载辅助文件 |
-| `Fleet-Bridge-0.1.8-Windows.exe` | Windows 便携版 |
+| `Fleet-Bridge-0.1.9-Setup.exe` | Windows 安装版，支持程序内更新 |
+| `Fleet-Bridge-0.1.9-Setup.exe.blockmap` | 安装版的差分下载辅助文件 |
+| `Fleet-Bridge-0.1.9-Windows.exe` | Windows 便携版 |
 | `latest.yml` | 安装版更新清单，包含版本与 SHA512 |
 | `SHA256SUMS.txt` | 上述发布文件的 SHA256 校验值 |
 
@@ -90,7 +90,7 @@ git push origin v0.1.8
 
 ## 4. 后续版本
 
-本次源码已将版本更新至 `0.1.8`，提交修改后按上一节推送同名标签即可，不要再次运行版本递增。后续版本例如从 `0.1.8` 发布下一个补丁版本 `0.1.9`：
+本次源码已将版本更新至 `0.1.9`，提交修改后按上一节推送同名标签即可，不要再次运行版本递增。后续版本例如从 `0.1.9` 发布下一个补丁版本 `0.1.10`：
 
 ```powershell
 git add .
@@ -99,7 +99,7 @@ git diff --cached
 git commit -m "Describe the changes"
 npm version patch -m "Release %s"
 git push origin main
-git push origin v0.1.9
+git push origin v0.1.10
 ```
 
 `npm version patch` 更新项目配置和锁文件中的版本，并创建版本提交与标签。实际版本不是上述示例时，最后推送的标签也必须改为相应版本。
@@ -112,7 +112,9 @@ git push origin v0.1.9
 
 重新开启「自动更新」并保存，会同时启用自动检查与下载并立即检查一次。发现新版后后台下载，SHA512 校验成功后等待用户真正退出程序；通过托盘菜单「退出舰桥」退出时静默安装，不弹出安装向导、不自动重新启动，下次打开使用新版。右上角关闭只收起到托盘，不安装、不打断代理。有模型请求进行中时不触发自动安装，请先完成请求再退出。
 
-关闭「自动更新」后，已下载的更新不会在退出时自动安装，仍可选择「重启并安装」。关闭自动检查或自动下载也会关闭自动安装。手动重启安装前同样检查进行中的模型请求。下载或校验失败不执行安装，界面提供重试。
+关闭「自动更新」后，已下载的更新不会在退出时自动安装，仍可选择「重启更新」：静默完成更新后自动重新打开舰桥，不显示安装向导。关闭自动检查或自动下载也会关闭自动安装。手动重启更新前同样检查进行中的模型请求。下载或校验失败不执行安装，界面提供重试。首次安装仍保留安装向导和自定义安装目录。
+
+旧版客户端的「重启并安装」仍按旧逻辑发起更新，这一次升级可能显示向导；安装本版本后，后续更新才会使用修复后的静默重启流程。
 
 便携版不执行自身替换安装，提供发布页入口。开发模式、未配置更新源的构建也不会执行安装更新。
 
@@ -128,7 +130,7 @@ git push origin v0.1.9
 
 ```powershell
 npm run dist -- --require-repository
-node scripts/check-release.cjs v0.1.8 --assets
+node scripts/check-release.cjs v0.1.9 --assets
 ```
 
 项目配置已填写实际的 `repository.url`，本地构建无需额外设置更新仓库。脚本优先读取 `GITHUB_REPOSITORY`，未设置时读取项目配置；Fork 发布时应相应修改仓库地址与源码入口。
@@ -151,5 +153,5 @@ npm run dist:portable
 - Actions 的测试、构建、发布文件核验步骤必须通过。
 - Release 中应同时存在安装版、便携版、差分文件、更新清单和校验文件。
 - 在安装版中确认服务商配置、模型连接和手动检查更新正常。
-- 本地下载测试覆盖隔离环境中的更新发现、校验、重试、缓存恢复、退出安装的静默与不重启参数，不执行真实安装；正式仓库的跨版本在线升级需要另外实际验收。
+- 本地下载测试覆盖隔离环境中的更新发现、校验、重试、缓存恢复，并检查真实 NSIS 参数构建：退出更新为 `/S`，手动重启更新为 `/S --force-run`。测试拦截安装器启动，不执行真实安装；正式仓库的跨版本在线升级需要另外实际验收。
 - 不在源码仓库中提交本地测试产物、构建缓存或带有真实凭据的数据。

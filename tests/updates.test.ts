@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
+import { parse } from 'yaml'
 import { describe, it, expect, vi } from 'vitest'
 import { Updates, githubRepository } from '../src/main/updates'
 import type { Settings, UpdateState } from '../src/shared/types'
@@ -53,7 +55,19 @@ describe('GitHub application updates', () => {
     installation.inflight.mockReturnValue(0)
     await Promise.all([updates.install(), updates.install()])
     expect(installation.prepare).toHaveBeenCalledTimes(1)
-    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(false, true)
+    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, true)
+    expect(updates.snapshot().message).toContain('重新打开')
+  })
+  it('keeps the first-install wizard and custom installation directory enabled', () => {
+    const config = parse(readFileSync(new URL('../electron-builder.yml', import.meta.url), 'utf8'))
+    expect(config.nsis).toMatchObject({ oneClick: false, allowToChangeInstallationDirectory: true })
+  })
+  it('does not install twice when a manual restart overlaps the quit handler', async () => {
+    const { backend, updates, installation } = fixture()
+    await updates.check()
+    await Promise.all([updates.install(), updates.installOnQuit()])
+    expect(installation.prepare).toHaveBeenCalledTimes(1)
+    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, true)
   })
   it('defaults to silent installation on real exit without restarting the app', async () => {
     const { backend, updates, installation } = fixture()
@@ -100,7 +114,7 @@ describe('GitHub application updates', () => {
     expect(backend.quitAndInstall).not.toHaveBeenCalled()
     // Manual restart remains available even when automatic installation is off.
     await updates.install()
-    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(false, true)
+    expect(backend.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, true)
   })
   it('checks immediately when automatic updating is enabled and uses an already downloaded update', async () => {
     const { backend, updates, settings } = fixture({}, { autoCheckUpdates: false, autoDownloadUpdates: false })

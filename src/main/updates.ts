@@ -60,7 +60,7 @@ export class Updates {
   private downloadedMessage() {
     return this.automaticInstallEnabled()
       ? '更新已下载并校验；退出舰桥时自动静默安装，下次启动使用新版。收起到托盘不会安装。'
-      : '更新已下载并校验；可手动重启安装，或开启自动更新，在退出时安装。'
+      : '更新已下载并校验；可手动重启更新，或开启自动更新，在退出时安装。'
   }
   private patch(patch: Partial<UpdateState>) { this.state = { ...this.state, ...patch }; this.changed(this.snapshot()) }
   private fail(error: unknown) {
@@ -108,17 +108,18 @@ export class Updates {
   }
   async installOnQuit(): Promise<void> {
     if (this.state.mode !== 'installer' || !this.automaticInstallEnabled() || this.state.phase !== 'downloaded' || this.installation.inflight() > 0) return
-    await this.installDownloaded(true)
+    await this.installDownloaded({ relaunch: false })
   }
-  async install() { await this.installDownloaded(false) }
-  private async installDownloaded(silent: boolean) {
+  async install() { await this.installDownloaded({ relaunch: true }) }
+  private async installDownloaded({ relaunch }: { relaunch: boolean }) {
     if (this.installRequested) return
     if (this.state.mode !== 'installer' || this.state.phase !== 'downloaded') throw new Error('请先下载并校验更新。')
     if (this.installation.inflight() > 0) throw new Error('仍有模型请求进行中，请结束请求后再重启安装。')
     this.installRequested = true
     this.stop()
-    this.patch({ phase: 'installing', message: silent ? '正在静默安装更新，下次启动使用新版…' : '正在退出舰桥并安装更新…' })
-    try { await this.installation.prepare(); this.backend.quitAndInstall(silent, !silent) }
+    this.patch({ phase: 'installing', message: relaunch ? '正在静默更新，完成后将重新打开舰桥…' : '正在静默安装更新，下次启动使用新版…' })
+    // App updates are always silent; restarting is independent of the install UI.
+    try { await this.installation.prepare(); this.backend.quitAndInstall(true, relaunch) }
     catch (error) {
       if (this.installRequested) {
         this.installRequested = false

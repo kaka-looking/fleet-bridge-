@@ -7,8 +7,8 @@ import { exactTokens, formatTokens, localDay, totalUsage, usageCalendar } from '
 function describeDay(day: UsageCalendarDay) {
   if (!day.recorded) return `${day.date}：尚未开始记录，历史用量未知`
   const { usage } = day
-  if (usage.requests > 0 && usage.unknownUsageRequests === usage.requests) return `${day.date}：用量未知，${usage.requests} 次请求均未收到有效用量`
-  return `${day.date}：已记录 ${exactTokens(usage.inputTokens + usage.outputTokens)} Tokens，输入 ${exactTokens(usage.inputTokens)}，输出 ${exactTokens(usage.outputTokens)}，${usage.requests} 次请求${usage.unknownUsageRequests ? `，${usage.unknownUsageRequests} 次未收到有效用量` : ''}`
+  if (usage.requests > 0 && usage.unknownUsageRequests === usage.requests) return `${day.date}：用量未知，${usage.requests} 次请求`
+  return `${day.date}：已记录 ${exactTokens(usage.inputTokens + usage.outputTokens)} Tokens，输入 ${exactTokens(usage.inputTokens)}，输出 ${exactTokens(usage.outputTokens)}，${usage.requests} 次请求`
 }
 
 export function UsageHeatmap({ history }: { history: UsageHistory }) {
@@ -71,7 +71,6 @@ export function UsageHeatmap({ history }: { history: UsageHistory }) {
     <details className="usage-explanation"><summary><Info size={13}/>统计说明 · 开始记录于 {history.since}</summary>
       <p>按请求完成时的本地日期累计输入和输出 Tokens，包含异常或取消请求中已收到的有效用量。未返回用量的请求不会估算为实际消耗；斜纹方格表示当日有请求但用量未知，浅色虚线方格表示尚未开始记录。</p>
       <p>每日统计独立保存在本地，不受最近 300 条连接明细限制。升级时仅迁移仍保留的旧记录，已经淘汰的历史无法补回。清空连接明细默认保留统计，也可选择同时清空用量。</p>
-      {totals.unknownUsageRequests > 0 && <p>所选范围内有 {totals.unknownUsageRequests} 次请求未收到有效用量，实际消耗可能高于已记录值。</p>}
     </details>
   </section>
 }

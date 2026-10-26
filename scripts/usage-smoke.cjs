@@ -75,9 +75,18 @@ const { randomBytes } = require('node:crypto')
     await unknownCell.click()
     assert.match(await panel.locator('.usage-day-detail').innerText(), /用量未知/)
     assert.doesNotMatch(await panel.locator('.usage-day-detail').innerText(), /0 Tokens/)
+    assert.doesNotMatch(await unknownCell.getAttribute('aria-label'), /未收到有效用量/)
+    assert.doesNotMatch(await unknownCell.getAttribute('title'), /未收到有效用量/)
     const todayCell = panel.locator(`button[data-date="${todayKey}"]`)
     await todayCell.click()
-    assert.match(await panel.locator('.usage-day-detail').innerText(), /1 次未收到有效用量/)
+    assert.match(await panel.locator('.usage-day-detail').innerText(), /2 次请求/)
+    assert.doesNotMatch(await panel.locator('.usage-day-detail').innerText(), /未收到有效用量/)
+    assert.doesNotMatch(await todayCell.getAttribute('aria-label'), /未收到有效用量/)
+    assert.doesNotMatch(await todayCell.getAttribute('title'), /未收到有效用量/)
+    await panel.locator('.usage-explanation summary').click()
+    assert.doesNotMatch(await panel.innerText(), /未收到有效用量/)
+    assert.equal((await page.evaluate(() => window.fleet.snapshot())).usage.daily.find(day => day.date === todayKey).unknownUsageRequests, 1, 'Hiding the notice must not change recorded usage')
+    await panel.locator('.usage-explanation summary').click()
     await todayCell.press('ArrowUp')
     assert.notEqual(await panel.locator('button:focus').getAttribute('data-date'), todayKey)
     await page.getByLabel('使用记录年份', { exact: true }).selectOption(String(today.getFullYear() - 1))
@@ -103,6 +112,19 @@ const { randomBytes } = require('node:crypto')
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const about = page.getByRole('region', { name: '关于 Fleet Bridge', exact: true })
     assert.match(await about.innerText(), /Fleet Bridge为轻量高定制度面板/)
+    const typography = await about.locator(':scope > p').evaluate(paragraph => {
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+      const styles = []
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.textContent.trim()) continue
+        const style = getComputedStyle(node.parentElement)
+        styles.push({ size: style.fontSize, weight: style.fontWeight, family: style.fontFamily })
+      }
+      return styles
+    })
+    assert.ok(typography.length >= 3)
+    for (const style of typography) assert.deepEqual(style, typography[0], 'All about text, including Issues, must use identical typography')
+    assert.equal(typography[0].weight, '700')
     assert.equal(await about.getByRole('link', { name: 'Issues', exact: true }).getAttribute('href'), 'https://github.com/kaka-looking/fleet-bridge-/issues')
     await application.evaluate(({ shell }) => {
       global.__usageLinks = []

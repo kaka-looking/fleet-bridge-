@@ -52,14 +52,18 @@ const ts = require('typescript')
     const { NsisUpdater } = require(path.join(process.env.FLEET_UPDATE_TEST_ROOT, 'node_modules/electron-updater'))
     const { Updates } = require(path.join(process.env.FLEET_UPDATE_TEST_DIR, 'updates.cjs'))
     const installers = []
+    const launches = []
     const makeUpdater = () => {
       const updater = new NsisUpdater()
       updater.logger = null
       updater.forceDevUpdateConfig = true
       updater.updateConfigPath = path.join(process.env.FLEET_UPDATE_TEST_DIR, 'update.yml')
       updater.disableDifferentialDownload = true
-      // Never execute the deliberately non-executable test installer.
-      updater.doInstall = options => { installers.push(options); return true }
+      // Exercise the real NSIS argument builder, but never launch an installer.
+      updater.app.quit = () => {}
+      updater.spawnLog = async (command, args) => { launches.push({ command, args: [...args] }) }
+      const doInstall = updater.doInstall.bind(updater)
+      updater.doInstall = options => { installers.push(options); return doInstall(options) }
       return updater
     }
     const updater = makeUpdater()
@@ -83,7 +87,8 @@ const ts = require('typescript')
       const hash = crypto.createHash('sha512').update(bytes).digest('base64')
       assert.equal(hash, process.env.FLEET_UPDATE_EXPECTED_HASH)
       assert.ok(updater.installerPath.startsWith(process.env.FLEET_UPDATE_TEST_DIR), 'Download cache must stay isolated')
-      const restored = new Updates(makeUpdater(), options, () => settings, () => {}, installation)
+      const restoredBackend = makeUpdater()
+      const restored = new Updates(restoredBackend, options, () => settings, () => {}, installation)
       assert.equal((await restored.check()).phase, 'downloaded', 'A new updater instance must recover and verify the downloaded cache')
       settings.autoInstallUpdates = false
       await restored.installOnQuit()
@@ -98,7 +103,25 @@ const ts = require('typescript')
       assert.equal(installers.length, 1)
       assert.equal(installers[0].isSilent, true)
       assert.equal(installers[0].isForceRunAfter, false)
-      fs.writeFileSync(path.join(process.env.FLEET_UPDATE_TEST_DIR, 'result.json'), JSON.stringify({ passed: true, version: nextVersion, rejectedCorruptedDownload: errors.some(message => /checksum mismatch/.test(message)), downloadedBytes: bytes.length, downloadedSha512: hash, silentInstall: true, forceRestart: false }))
+      assert.equal(launches.length, 1)
+      assert.equal(launches[0].command, restoredBackend.installerPath)
+      assert.deepEqual(launches[0].args, ['--updated', '/S'])
+      const manualBackend = makeUpdater()
+      manualBackend.autoRunAppAfterInstall = false
+      const manual = new Updates(manualBackend, options, () => settings, () => {}, installation)
+      assert.equal((await manual.check()).phase, 'downloaded')
+      settings.autoInstallUpdates = false
+      await manual.install()
+      assert.equal(prepared, 2)
+      assert.equal(installers.length, 2)
+      assert.equal(installers[1].isSilent, true)
+      assert.equal(installers[1].isForceRunAfter, true)
+      assert.equal(launches.length, 2)
+      assert.equal(launches[1].command, manualBackend.installerPath)
+      assert.deepEqual(launches[1].args, ['--updated', '/S', '--force-run'])
+      await manual.installOnQuit()
+      assert.equal(launches.length, 2, 'The quit handler must not start a second installer')
+      fs.writeFileSync(path.join(process.env.FLEET_UPDATE_TEST_DIR, 'result.json'), JSON.stringify({ passed: true, version: nextVersion, rejectedCorruptedDownload: errors.some(message => /checksum mismatch/.test(message)), downloadedBytes: bytes.length, downloadedSha512: hash, silentInstall: true, forceRestart: false, manualSilentInstall: true, manualForceRestart: true, nsisArguments: launches.map(launch => launch.args) }))
     } finally { app.quit() }
   }
   const entry = path.join(sandbox, 'fixture.cjs')
@@ -117,8 +140,10 @@ const ts = require('typescript')
     assert.equal(code, 0, diagnostics)
     const result = JSON.parse(fs.readFileSync(path.join(sandbox, 'result.json'), 'utf8'))
     assert.equal(result.rejectedCorruptedDownload, true)
+    assert.equal(result.manualSilentInstall, true)
+    assert.equal(result.manualForceRestart, true)
     assert.equal(downloads, 2)
-    const report = { ...result, downloads, sandbox, checks: ['production update state machine with real NSIS updater and local manifest', 'rejects corrupted installer bytes by SHA512 and never installs them', 'retry downloads and verifies correct bytes', 'verified cache is reused by a new updater instance without redownloading', 'opt-out and active model requests prevent installation', 'real quitAndInstall requests silent installation without relaunch', 'download cache is isolated', 'no installer execution, public release, or user config changes'] }
+    const report = { ...result, downloads, sandbox, checks: ['production update state machine with real NSIS updater and local manifest', 'rejects corrupted installer bytes by SHA512 and never installs them', 'retry downloads and verifies correct bytes', 'verified cache is reused by a new updater instance without redownloading', 'opt-out and active model requests prevent installation', 'exit update builds --updated /S without --force-run', 'manual restart builds --updated /S --force-run even when autoRunAppAfterInstall is off', 'download cache is isolated', 'no installer execution, public release, or user config changes'] }
     fs.writeFileSync(path.join(artifacts, 'update-download-report.json'), JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
   } finally {
