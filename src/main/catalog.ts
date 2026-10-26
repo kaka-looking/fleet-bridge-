@@ -24,8 +24,10 @@ export function buildCatalog(providers: Provider[], activeId: string | null, ori
     model_messages: null, default_reasoning_level: capabilities.defaultReasoningEffort,
     supported_reasoning_levels: capabilities.reasoningEfforts.map(effort => ({ effort, description: profile.toggleOnly && effort !== 'none' ? '开启思考（此模型仅支持开关，不区分强度）' : ({ none: '关闭思考', minimal: '最少推理', low: '较少推理，响应更快', medium: '平衡推理与速度', high: '深入推理', xhigh: '更深入推理', max: '最大推理强度', ultra: '最高推理强度' })[effort] })), supports_reasoning_summaries: false,
     support_verbosity: false, default_verbosity: null,
-    context_window: capabilities.contextWindow, max_context_window: capabilities.contextWindow,
-    effective_context_window_percent: 90, auto_compact_token_limit: Math.floor(capabilities.contextWindow * 0.8),
+    // A window alone also makes Codex derive a compaction threshold. Leave all
+    // three unset so the upstream, not a bridge estimate, decides what fits.
+    context_window: null, max_context_window: null,
+    effective_context_window_percent: 100, auto_compact_token_limit: null,
     truncation_policy: { mode: 'tokens', limit: 10000 },
     input_modalities: capabilities.vision ? ['text', 'image'] : ['text'],
     apply_patch_tool_type: 'freeform', supports_parallel_tool_calls: true,

@@ -65,16 +65,48 @@ export class ToolContext {
     return { ...base, type: 'function_call', name: spec?.name ?? call.name, arguments: call.arguments, ...(spec?.namespace ? { namespace: spec.namespace } : {}) }
   }
 }
+function imageToChat(part: Json): Json | undefined {
+  if (!['input_image', 'image_url', 'image'].includes(part.type)) return
+  let image: Json
+  if (part.type === 'image') {
+    if (typeof part.data !== 'string' || !part.data || typeof part.mimeType !== 'string' || !part.mimeType.startsWith('image/')) throw new Error('工具图片缺少有效的 data 或 mimeType。')
+    image = { url: `data:${part.mimeType};base64,${part.data}` }
+  } else {
+    image = typeof part.image_url === 'string' ? { url: part.image_url } : { ...part.image_url }
+    if (typeof image.url !== 'string' || !image.url) throw new Error('图片缺少可转发的 image_url；Chat Completions 无法直接读取 Responses 的 file_id。')
+  }
+  return { type: 'image_url', image_url: { ...image, ...(part.detail ? { detail: part.detail } : {}) } }
+}
 function contentToChat(content: any): any {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return asString(content)
   return content.flatMap((part: Json) => {
+    if (!part || typeof part !== 'object') return []
     if (['input_text', 'output_text', 'text'].includes(part.type)) return [{ type: 'text', text: part.text ?? '' }]
-    if (part.type === 'input_image') return [{ type: 'image_url', image_url: { url: part.image_url, ...(part.detail ? { detail: part.detail } : {}) } }]
-    if (part.type === 'image_url') return [part]
+    const image = imageToChat(part)
+    if (image) return [image]
     if (part.type === 'input_file') return [{ type: 'file', file: { file_data: part.file_data, file_id: part.file_id, filename: part.filename } }]
     return []
   })
+}
+function toolOutputToChat(output: any, callId: string) {
+  const parts = Array.isArray(output) ? output : Array.isArray(output?.content) ? output.content : undefined
+  const images: Json[] = []
+  if (!parts?.some((part: any) => ['input_text', 'output_text', 'text', 'input_image', 'image_url', 'image'].includes(part?.type))) return { content: asString(output), images }
+  const text = parts.map((part: any) => {
+    const image = part && typeof part === 'object' ? imageToChat(part) : undefined
+    if (image) {
+      images.push(image)
+      return `[Image ${images.length} from tool call ${callId}; see attached tool images.]`
+    }
+    if (['input_text', 'output_text', 'text'].includes(part?.type)) return asString(part.text ?? '')
+    return JSON.stringify(part) ?? ''
+  })
+  if (!Array.isArray(output)) {
+    const { content: _, ...metadata } = output
+    if (Object.keys(metadata).length) text.push(asString(metadata))
+  }
+  return { content: text.join('\n'), images }
 }
 export function toChat(request: Json, provider: Provider, model: string) {
   const context = new ToolContext(request)
@@ -104,7 +136,15 @@ export function toChat(request: Json, provider: Provider, model: string) {
       pendingReasoning = item.reasoning_content || reasoning || pendingReasoning
     } else if (['function_call_output', 'custom_tool_call_output', 'tool_search_output'].includes(item.type)) {
       flush()
-      messages.push({ role: 'tool', tool_call_id: item.call_id, content: asString(item.output ?? item.tools ?? '') })
+      const output = toolOutputToChat(item.output ?? item.tools ?? '', item.call_id)
+      messages.push({ role: 'tool', tool_call_id: item.call_id, content: output.content })
+      // Chat tool messages only accept text. Carry images in a user content
+      // block labeled as tool output; the repair below keeps parallel replies
+      // together before these attachments.
+      if (output.images.length) messages.push({ role: 'user', content: [
+        { type: 'text', text: `Images from tool call ${item.call_id} (tool output, not a new user request):` },
+        ...output.images
+      ] })
     } else if (item.type === 'message' || item.role) {
       const role = item.role === 'developer' ? 'system' : item.role
       if (role === 'system') {

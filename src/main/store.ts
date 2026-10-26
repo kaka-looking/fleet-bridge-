@@ -70,7 +70,7 @@ export class Store {
     const models = [...new Set(input.models.map(m => m.trim()).filter(Boolean))]
     if (!models.length || models.some(m => m.length > 160 || /[\x00-\x1f]/.test(m))) throw new Error('请至少填写一个有效的模型 ID。')
     if (!models.includes(input.defaultModel)) throw new Error('默认模型必须在模型列表中。')
-    if (!Number.isInteger(input.contextWindow) || input.contextWindow < 4096 || input.contextWindow > 10000000) throw new Error('上下文长度须为 4096–10000000 的整数。')
+    if (!Number.isSafeInteger(input.contextWindow) || input.contextWindow <= 0) throw new Error('上下文参考值须为正的安全整数。')
     const previous = input.id ? this.state.providers.find(p => p.id === input.id) : undefined
     if (input.id && !previous) throw new Error('服务商已被删除。')
     const secret = input.apiKey?.trim() ? this.cipher.encrypt(input.apiKey.trim()) : previous?.secret

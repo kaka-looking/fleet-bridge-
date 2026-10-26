@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse, stringify } from 'smol-toml'
 import { PRESETS } from '../src/shared/presets'
-import { modelCapabilities } from '../src/shared/model-capabilities'
+import { modelCapabilities, sanitizeCapabilities } from '../src/shared/model-capabilities'
 import type { Provider, ReasoningEffort } from '../src/shared/types'
 import { Store, type Cipher } from '../src/main/store'
 import { Runtime } from '../src/main/runtime'
@@ -25,10 +25,67 @@ describe('model capabilities and reasoning controls', () => {
     for (const model of catalog.models) {
       expect(model.default_reasoning_level).toBe('high')
       expect(model.supported_reasoning_levels.map(level => level.effort)).toEqual(['low', 'high', 'max'])
-      expect(model.context_window).toBe(1048576)
+      expect(model.context_window).toBeNull()
+      expect(model.max_context_window).toBeNull()
+      expect(model.auto_compact_token_limit).toBeNull()
       expect(model.input_modalities).toEqual(['text', 'image'])
     }
     expect(modelCapabilities(provider, 'deepseek-v4-pro').vision).toBe(false)
+  })
+  it('does not turn presets, saved settings or discovered context sizes into client limits', () => {
+    const providers = Object.values(PRESETS).map((preset, index) => ({
+      ...preset, id: `provider-${index}`, apiKeySet: false, models: ['unlisted'],
+      defaultModel: 'unlisted', contextWindow: 4096,
+      modelCapabilities: { unlisted: { contextWindow: 8192 } }
+    }))
+    const catalog = JSON.parse(JSON.stringify(buildCatalog(providers, providers[0].id)))
+    for (const model of catalog.models) {
+      expect(model).toMatchObject({
+        context_window: null, max_context_window: null,
+        auto_compact_token_limit: null, effective_context_window_percent: 100
+      })
+    }
+  })
+  it('preserves context policy supplied by the original model catalog, including its default alias', () => {
+    const original = { ...provider, id: 'codex-original' }
+    const policy = {
+      slug: provider.defaultModel, context_window: 400000, max_context_window: 1000000,
+      auto_compact_token_limit: 350000, effective_context_window_percent: 95
+    }
+    const catalog = buildCatalog([], null, { provider: original, models: [policy] })
+    expect(catalog.models.map(model => model.slug)).toEqual(['fleet/default', provider.defaultModel])
+    for (const model of catalog.models) {
+      expect(model).toMatchObject({
+        context_window: 400000, max_context_window: 1000000,
+        auto_compact_token_limit: 350000, effective_context_window_percent: 95
+      })
+    }
+  })
+  it('keeps upstream context metadata above the old validation ceiling without enforcing it', () => {
+    const contextWindow = 16777216
+    expect(sanitizeCapabilities({ contextWindow })).toEqual({ contextWindow })
+    const store = new Store(temporary(), cipher)
+    const id = store.save({ ...PRESETS.custom, name: 'Large context', baseUrl: 'http://127.0.0.1:1/v1', contextWindow, models: ['large'], defaultModel: 'large' })
+    store.saveModelCapabilities(id, [{ id: 'large', contextWindow }])
+    expect(modelCapabilities(store.getProvider(id), 'large').contextWindow).toBe(contextWindow)
+    expect(buildCatalog(store.providers, id).models.every(model => model.context_window === null)).toBe(true)
+    for (const invalid of [0, -1, 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(sanitizeCapabilities({ contextWindow: invalid })).toEqual({})
+    }
+  })
+  it('replaces the old cached bridge limits on startup without rewriting user context settings', async () => {
+    const store = new Store(temporary(), cipher)
+    store.save({ ...PRESETS.deepseek })
+    store.setSettings({ ...store.settings, autoStart: false })
+    const runtime = new Runtime(store, temporary())
+    const config = 'model_context_window = 2000000\nmodel_auto_compact_token_limit = 1800000\n'
+    writeFileSync(runtime.codex.path, config)
+    writeFileSync(runtime.codex.catalogPath, JSON.stringify({ models: [{ slug: 'fleet/default', context_window: 1048576, auto_compact_token_limit: 838860 }] }))
+    await runtime.init()
+    const catalog = JSON.parse(readFileSync(runtime.codex.catalogPath, 'utf8'))
+    expect(catalog.models.length).toBeGreaterThan(1)
+    for (const model of catalog.models) expect(model).toMatchObject({ context_window: null, max_context_window: null, auto_compact_token_limit: null })
+    expect(readFileSync(runtime.codex.path, 'utf8')).toBe(config)
   })
   it('prefers upstream metadata to model-name defaults and preserves unknown model settings', () => {
     const declared = { ...provider, modelCapabilities: { [provider.defaultModel]: { contextWindow: 262144, vision: false, reasoningEfforts: ['low', 'medium', 'high', 'max'] as ReasoningEffort[], defaultReasoningEffort: 'medium' as const } } }

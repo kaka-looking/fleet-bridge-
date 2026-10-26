@@ -1,7 +1,7 @@
 {
   "name": "fleet-bridge",
   "productName": "舰桥 Fleet Bridge",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "让你选择的模型，驶入 Codex。",
   "main": "out/main/index.js",
   "author": "Fleet Bridge",

@@ -9,7 +9,7 @@ import { reasoningProfile, sanitizeCapabilities } from '../shared/model-capabili
 import { applyReasoning } from './reasoning'
 import { OriginalConnection, ORIGINAL_ID } from './original'
 
-export class HttpError extends Error { constructor(readonly status: number, message: string) { super(message) } }
+export class HttpError extends Error { constructor(readonly status: number, message: string, readonly code?: string) { super(message) } }
 export function transportErrorCode(error: unknown): string | undefined {
   let current = error as any
   for (let depth = 0; current && depth < 4; depth++, current = current.cause) {
@@ -27,12 +27,19 @@ export function safeError(error: unknown, secrets: string[] = []) {
 }
 async function upstreamError(response: Response, secret: string) {
   let message = `上游返回 HTTP ${response.status}`
+  let contextExceeded = false
   try {
     const raw = await response.text()
-    try { const data = JSON.parse(raw); message += `：${data.error?.message ?? data.message ?? response.statusText}` }
+    try {
+      const data = JSON.parse(raw)
+      message += `：${data.error?.message ?? data.message ?? response.statusText}`
+      contextExceeded = data.error?.code === 'context_length_exceeded' || data.error?.type === 'context_length_exceeded'
+    }
     catch { message += `：${response.statusText}` }
   } catch { /* disconnected */ }
-  return new HttpError(502, safeError(new Error(message), [secret]))
+  // Codex can react to the upstream's actual context rejection only if its
+  // standard status and error code survive the adapter.
+  return new HttpError(contextExceeded ? 400 : 502, safeError(new Error(message), [secret]), contextExceeded ? 'context_length_exceeded' : undefined)
 }
 export function upstreamHeaders(key: string) { return { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) } }
 async function readBody(req: IncomingMessage) {
@@ -268,7 +275,7 @@ export class Gateway {
         json(res, 200, response)
       }
     } catch (error) {
-      errorCode = transportErrorCode(error)
+      errorCode = error instanceof HttpError ? error.code : transportErrorCode(error)
       const timedOut = (timeoutSignal?.aborted && signal?.reason === timeoutSignal.reason) || (!controller.signal.aborted && /TIMEOUT/.test(errorCode ?? ''))
       const cancelled = controller.signal.aborted || res.destroyed
       const disconnected = upstreamOutcome !== 'failed' && (transportFailure(error) || /连接提前关闭|未收到完成/.test(error instanceof Error ? error.message : String(error)))
@@ -278,7 +285,7 @@ export class Gateway {
       errorMessage = status === 'interrupted' ? `${upstreamHttpStatus ? `上游已返回 HTTP ${upstreamHttpStatus}，但舰桥未收到完整响应` : '舰桥未收到上游响应头'}；上游是否完成尚未确认。${detail}${errorCode ? `（${errorCode}）` : ''}`
         : status === 'timeout' ? `等待上游响应超时；上游是否完成尚未确认。${detail}` : detail
       if (!res.destroyed) {
-        if (!res.headersSent) json(res, error instanceof HttpError ? error.status : 502, { error: { message: errorMessage, type: 'fleet_bridge_error' } })
+        if (!res.headersSent) json(res, error instanceof HttpError ? error.status : 502, { error: { message: errorMessage, type: errorCode === 'context_length_exceeded' ? 'invalid_request_error' : 'fleet_bridge_error', ...(errorCode ? { code: errorCode } : {}) } })
         else {
           const code = status === 'interrupted' ? 'connection_interrupted' : status === 'timeout' ? 'request_timeout' : upstreamOutcome === 'failed' ? 'upstream_error' : 'fleet_bridge_error'
           if (converter) converter.fail(errorMessage, code)

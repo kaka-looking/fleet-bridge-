@@ -222,6 +222,11 @@ describe('real HTTP gateway', () => {
       if (req.url === '/v1/models') { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ data: [{ id: 'model-a' }, { id: 'model-b' }] })); return }
       let raw = ''; for await (const chunk of req) raw += chunk
       const body = JSON.parse(raw); received.push({ ...body, authorization: req.headers.authorization, path: req.url })
+      if (body.input === 'FLEET_CONTEXT_REJECT' || body.messages?.some((message: any) => message.content === 'FLEET_CONTEXT_REJECT')) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: { code: 'context_length_exceeded', type: 'invalid_request_error', message: 'Upstream context exceeded sk-secret-test' } }))
+        return
+      }
       if (body.model === 'fail-model') { res.writeHead(429, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'Rate limit reached sk-secret-test' } })); return }
       if (req.url === '/v1/responses') {
         const response = { id: 'native-response', object: 'response', model: body.model, status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'native' }] }], usage: { input_tokens: 3, output_tokens: 2 } }
@@ -272,6 +277,58 @@ describe('real HTTP gateway', () => {
     const body = await second.json() as any
     expect(body.output[0].content[0].text).toBe('done:pong')
   })
+  it.each([false, true])('forwards tool images over HTTP and preserves them across cached turns (stream=%s)', async stream => {
+    const finish = async (response: Response) => {
+      expect(response.status).toBe(200)
+      if (!stream) return await response.json() as any
+      const events: any[] = []
+      for await (const event of parseSSE(response.body!)) events.push(JSON.parse(event.data))
+      return events.find(event => event.type === 'response.completed').response
+    }
+    const first = await finish(await request({
+      model: 'fleet/default', stream, input: 'Inspect the image',
+      tools: [{ type: 'function', name: 'view_image', parameters: { type: 'object' } }]
+    }))
+    const imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwwZGP6DAQBJyAn3FGMynQAAAABJRU5ErkJggg=='
+    const second = await finish(await request({
+      model: 'fleet/default', stream, previous_response_id: first.id,
+      input: [{ type: 'function_call_output', call_id: first.output[0].call_id, output: [
+        { type: 'input_text', text: 'Screenshot from view_image' },
+        { type: 'input_image', image_url: imageUrl, detail: 'high' }
+      ] }]
+    }))
+    const outgoing = received.at(-1)
+    expect(outgoing.path).toBe('/v1/chat/completions')
+    expect(outgoing.messages.map((message: any) => message.role)).toEqual(['user', 'assistant', 'tool', 'user'])
+    expect(outgoing.messages[2].content).toContain('Screenshot from view_image')
+    expect(outgoing.messages[2].content).not.toContain(imageUrl)
+    expect(outgoing.messages[3].content[1]).toEqual({ type: 'image_url', image_url: { url: imageUrl, detail: 'high' } })
+    await finish(await request({ model: 'fleet/default', stream, previous_response_id: second.id, input: 'Describe it again' }))
+    const replay = received.at(-1).messages
+    expect(replay.flatMap((message: any) => Array.isArray(message.content) ? message.content : []).filter((part: any) => part.type === 'image_url')).toEqual([
+      { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } }
+    ])
+  })
+  it('does not truncate requests to a provider context reference size', async () => {
+    const id = runtime.store.save({ ...PRESETS.custom, name: 'Small reference', baseUrl, models: ['small-ref'], defaultModel: 'small-ref', contextWindow: 4096 })
+    const input = 'context-token '.repeat(5000)
+    const response = await request({ model: modelSlug(runtime.store.getProvider(id), 'small-ref'), input })
+    expect(response.status).toBe(200); await response.text()
+    expect(received.at(-1).messages[0].content).toBe(input)
+  })
+  it.each(['chat', 'responses'] as const)('preserves upstream context rejection status and code for %s clients', async protocol => {
+    const id = runtime.store.save({ ...PRESETS.custom, name: `Context ${protocol}`, protocol, baseUrl, models: ['context-test'], defaultModel: 'context-test', apiKey: 'sk-secret-test' })
+    const model = modelSlug(runtime.store.getProvider(id), 'context-test')
+    for (const stream of [false, true]) {
+      const response = await request({ model, input: 'FLEET_CONTEXT_REJECT', stream })
+      expect(response.status).toBe(400)
+      const body = await response.json() as any
+      expect(body.error).toMatchObject({ code: 'context_length_exceeded', type: 'invalid_request_error' })
+      expect(body.error.message).toContain('Upstream context exceeded')
+      expect(JSON.stringify(body)).not.toContain('sk-secret-test')
+      expect(runtime.store.logs[0]).toMatchObject({ errorCode: 'context_length_exceeded', upstreamHttpStatus: 400, upstreamOutcome: 'failed' })
+    }
+  })
   it('supports live default switching and strict explicit model routes', async () => {
     const id = runtime.store.save({ ...PRESETS.glm, baseUrl, models: ['model-b'], defaultModel: 'model-b' })
     runtime.selectProvider(id)
@@ -288,6 +345,13 @@ describe('real HTTP gateway', () => {
     const stream = await request({ model, input: 'hi', stream: true })
     const events: any[] = []; for await (const event of parseSSE(stream.body!)) events.push(JSON.parse(event.data))
     expect(events.at(-1).response.model).toBe(model)
+    const input = [
+      { type: 'function_call', name: 'view_image', call_id: 'native-image', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'native-image', output: [{ type: 'input_image', image_url: 'data:image/png;base64,aW1hZ2U=' }] }
+    ]
+    const imageResponse = await request({ model, input })
+    expect(imageResponse.status).toBe(200); await imageResponse.text()
+    expect(received.at(-1).input).toEqual(input)
   })
   it('provides model discovery, connection test and redacted request errors', async () => {
     expect(await runtime.discoverModels({ baseUrl })).toEqual(['model-a', 'model-b'])

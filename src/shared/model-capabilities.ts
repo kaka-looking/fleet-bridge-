@@ -17,7 +17,7 @@ export function mergeCapabilities(previous: ModelCapabilities = {}, incoming: Mo
 
 export function sanitizeCapabilities(value: ModelCapabilities): ModelCapabilities {
   const result: ModelCapabilities = {}
-  if (Number.isInteger(value.contextWindow) && value.contextWindow! >= 4096 && value.contextWindow! <= 10000000) result.contextWindow = value.contextWindow
+  if (Number.isSafeInteger(value.contextWindow) && value.contextWindow! > 0) result.contextWindow = value.contextWindow
   if (typeof value.vision === 'boolean') result.vision = value.vision
   if (Array.isArray(value.reasoningEfforts)) result.reasoningEfforts = REASONING_EFFORTS.filter(effort => value.reasoningEfforts!.includes(effort))
   if (isReasoningEffort(value.defaultReasoningEffort) && result.reasoningEfforts?.includes(value.defaultReasoningEffort)) result.defaultReasoningEffort = value.defaultReasoningEffort
