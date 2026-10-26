@@ -52,11 +52,24 @@ const { randomBytes } = require('node:crypto')
   let application
   const errors = []
   const totals = snapshot => snapshot.usage.daily.reduce((sum, day) => sum + day.inputTokens + day.outputTokens, 0)
+  async function resize(page, width, height) {
+    await application.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(size.width, size.height), { width, height })
+    try {
+      // Native resize completion does not guarantee that Chromium has processed
+      // its new viewport yet. Wait for the renderer before measuring overflow.
+      await page.waitForFunction(size => innerWidth === size.width && innerHeight === size.height, { width, height }, { timeout: 10000 })
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    } catch (error) {
+      const native = await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getContentSize())
+      const renderer = await page.evaluate(() => ({ width: innerWidth, height: innerHeight, scale: devicePixelRatio }))
+      throw new Error(`Window resize did not settle: ${JSON.stringify({ expected: { width, height }, native, renderer })}`, { cause: error })
+    }
+  }
   async function launch() {
     application = await electron.launch({ args: [root, '--force-device-scale-factor=1'], env })
     const page = await application.firstWindow()
     page.on('pageerror', error => errors.push(error.message))
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1400, 1000))
+    await resize(page, 1400, 1000)
     await page.getByRole('heading', { name: /你自己的模型舰队/ }).waitFor()
     return page
   }
@@ -97,18 +110,19 @@ const { randomBytes } = require('node:crypto')
     await page.evaluate(async () => { const state = await window.fleet.snapshot(); await window.fleet.saveSettings({ ...state.settings, theme: 'dark' }) })
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark')
     await panel.screenshot({ path: path.join(artifacts, 'usage-dark.png') })
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1000, 740))
+    await resize(page, 1000, 740)
     const overflow = await page.evaluate(() => {
       const main = document.querySelector('.main-content')
       const panel = document.querySelector('.usage-panel')
       const grid = document.querySelector('.usage-scroll')
-      return { main: main.scrollWidth - main.clientWidth, panelRight: panel.getBoundingClientRect().right, mainRight: main.getBoundingClientRect().right, calendarScrolls: grid.scrollWidth > grid.clientWidth }
+      return { viewportWidth: innerWidth, viewportHeight: innerHeight, main: main.scrollWidth - main.clientWidth, panelRight: panel.getBoundingClientRect().right, mainRight: main.getBoundingClientRect().right, calendarWidth: grid.clientWidth, calendarContentWidth: grid.scrollWidth, calendarScrolls: grid.scrollWidth > grid.clientWidth }
     })
-    assert.ok(overflow.main <= 1, 'The main page must not overflow horizontally')
-    assert.ok(overflow.panelRight <= overflow.mainRight, 'The heatmap must fit the page')
-    assert.equal(overflow.calendarScrolls, true, 'Only the calendar scrolls in a compact window')
+    const layout = JSON.stringify(overflow)
+    assert.ok(overflow.main <= 1, `The main page must not overflow horizontally: ${layout}`)
+    assert.ok(overflow.panelRight <= overflow.mainRight, `The heatmap must fit the page: ${layout}`)
+    assert.equal(overflow.calendarScrolls, true, `Only the calendar scrolls in a compact window: ${layout}`)
     await panel.screenshot({ path: path.join(artifacts, 'usage-dark-compact.png') })
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1400, 1000))
+    await resize(page, 1400, 1000)
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const about = page.getByRole('region', { name: '关于 Fleet Bridge', exact: true })
     assert.match(await about.innerText(), /Fleet Bridge为轻量高定制度面板/)
