@@ -1,9 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes, randomUUID } from 'node:crypto'
-import type { DiscoveredModel, Provider, ProviderInput, RequestLog, Settings } from '../shared/types'
+import type { DiscoveredModel, Provider, ProviderInput, RequestLog, Settings, UsageHistory } from '../shared/types'
 import { mergeCapabilities, reasoningProfile, sanitizeCapabilities } from '../shared/model-capabilities'
 import { normalizeRequestLog } from '../shared/request-log'
+import { migrateUsage, recordUsage } from '../shared/usage'
 
 export interface Cipher { encrypt(value: string): string; decrypt(value: string): string; label: string }
 type StoredProvider = Provider & { secret?: string }
@@ -14,6 +15,7 @@ interface State {
   settings: Settings
   gatewayToken: string
   logs: RequestLog[]
+  usage?: UsageHistory
 }
 export function atomicWrite(path: string, data: string) {
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`
@@ -40,6 +42,8 @@ export class Store {
     const autoCheckUpdates = settings.autoCheckUpdates !== false
     const autoDownloadUpdates = settings.autoDownloadUpdates !== false
     this.state.settings = { theme: 'system', timeout: 120, ...settings, autoCheckUpdates, autoDownloadUpdates, autoInstallUpdates: autoCheckUpdates && autoDownloadUpdates && settings.autoInstallUpdates !== false }
+    // Migrate only retained records once; never invent usage for evicted history.
+    this.state.usage ??= migrateUsage(this.state.logs)
     this.persist()
   }
   private persist() { atomicWrite(this.file, JSON.stringify(this.state, null, 2)) }
@@ -48,6 +52,7 @@ export class Store {
   get settings() { return { ...this.state.settings } }
   get token() { return this.state.gatewayToken }
   get logs() { return structuredClone(this.state.logs).map(normalizeRequestLog) }
+  get usage() { return structuredClone(this.state.usage!) }
   getProvider(id: string) {
     const provider = this.providers.find(p => p.id === id)
     if (!provider) throw new Error('服务商不存在，请刷新后重试。')
@@ -133,6 +138,16 @@ export class Store {
     const provider = this.state.providers.find(p => p.id === id)
     if (provider) { provider.lastTest = { ...result, at: new Date().toISOString() }; this.persist() }
   }
-  addLog(log: RequestLog) { this.state.logs.unshift(log); this.state.logs = this.state.logs.slice(0, 300); this.persist() }
-  clearLogs() { this.state.logs = []; this.persist() }
+  addLog(log: RequestLog) {
+    if (this.state.logs.some(entry => entry.id === log.id)) return
+    recordUsage(this.state.usage!, log)
+    this.state.logs.unshift(log)
+    this.state.logs = this.state.logs.slice(0, 300)
+    this.persist()
+  }
+  clearLogs(clearUsage = false) {
+    this.state.logs = []
+    if (clearUsage === true) this.state.usage = migrateUsage([])
+    this.persist()
+  }
 }

@@ -12,7 +12,7 @@ export class Runtime {
   snapshot(): Snapshot {
     return { providers: this.store.providers, activeProviderId: this.store.activeProviderId, settings: this.store.settings,
       gateway: { running: this.gateway.running, url: this.gateway.url, error: this.gateway.error, inflight: this.gateway.inflight },
-      codex: this.codex.status(), logs: this.store.logs, dataPath: this.store.directory, vault: this.store.cipher.label, version, originalCodex: this.codex.original.status() }
+      codex: this.codex.status(), logs: this.store.logs, usage: this.store.usage, dataPath: this.store.directory, vault: this.store.cipher.label, version, originalCodex: this.codex.original.status() }
   }
   saveProvider(input: ProviderInput) { this.store.save(input); this.codex.writeCatalog(); return this.snapshot() }
   async saveAndConnectProvider(input: ProviderInput): Promise<ProviderSaveResult> {
@@ -57,5 +57,5 @@ export class Runtime {
     }
     return this.snapshot()
   }
-  clearLogs() { this.store.clearLogs(); return this.snapshot() }
+  clearLogs(clearUsage = false) { this.store.clearLogs(clearUsage); return this.snapshot() }
 }

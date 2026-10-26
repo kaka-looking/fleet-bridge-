@@ -2,7 +2,7 @@
 
 本文说明舰桥 Fleet Bridge 当前源码的上传、构建与发布方式，依据本项目现有的工作流和发布脚本编写。
 
-当前版本为 `0.1.7`，公开仓库为 [kaka-looking/fleet-bridge-](https://github.com/kaka-looking/fleet-bridge-)。源码推送与安装包发布是两个独立步骤：主分支推送触发测试，正式版本标签触发 Windows 安装包发布。
+当前版本为 `0.1.8`，公开仓库为 [kaka-looking/fleet-bridge-](https://github.com/kaka-looking/fleet-bridge-)。源码推送与安装包发布是两个独立步骤：主分支推送触发测试，正式版本标签触发 Windows 安装包发布。
 
 ## 1. 上传前准备
 
@@ -19,6 +19,7 @@ npm run test:updates
 
 ```powershell
 npm run test:updates-ui
+npm run test:usage
 ```
 
 只上传本项目目录中的源码、必要资源、文档、锁文件、测试源码和工作流。不上传依赖目录、构建输出、安装包、测试截图、验收报告或本地应用数据；这些内容已列入项目的忽略规则。
@@ -54,9 +55,9 @@ git push -u origin main
 确认主分支测试通过、待发布修改已经提交，再创建与项目版本完全一致的标签：
 
 ```powershell
-git tag v0.1.7
+git tag v0.1.8
 git push origin main
-git push origin v0.1.7
+git push origin v0.1.8
 ```
 
 发布工作流接受 `v数字.数字.数字` 格式的正式标签，并检查它是否与项目配置中的版本一致。普通主分支推送不会自动发布安装包。
@@ -77,9 +78,9 @@ git push origin v0.1.7
 
 | 文件 | 用途 |
 | --- | --- |
-| `Fleet-Bridge-0.1.7-Setup.exe` | Windows 安装版，支持程序内更新 |
-| `Fleet-Bridge-0.1.7-Setup.exe.blockmap` | 安装版的差分下载辅助文件 |
-| `Fleet-Bridge-0.1.7-Windows.exe` | Windows 便携版 |
+| `Fleet-Bridge-0.1.8-Setup.exe` | Windows 安装版，支持程序内更新 |
+| `Fleet-Bridge-0.1.8-Setup.exe.blockmap` | 安装版的差分下载辅助文件 |
+| `Fleet-Bridge-0.1.8-Windows.exe` | Windows 便携版 |
 | `latest.yml` | 安装版更新清单，包含版本与 SHA512 |
 | `SHA256SUMS.txt` | 上述发布文件的 SHA256 校验值 |
 
@@ -89,7 +90,7 @@ git push origin v0.1.7
 
 ## 4. 后续版本
 
-本次源码已将版本更新至 `0.1.7`，提交修改后按上一节推送同名标签即可，不要再次运行版本递增。后续版本例如从 `0.1.7` 发布下一个补丁版本 `0.1.8`：
+本次源码已将版本更新至 `0.1.8`，提交修改后按上一节推送同名标签即可，不要再次运行版本递增。后续版本例如从 `0.1.8` 发布下一个补丁版本 `0.1.9`：
 
 ```powershell
 git add .
@@ -98,7 +99,7 @@ git diff --cached
 git commit -m "Describe the changes"
 npm version patch -m "Release %s"
 git push origin main
-git push origin v0.1.8
+git push origin v0.1.9
 ```
 
 `npm version patch` 更新项目配置和锁文件中的版本，并创建版本提交与标签。实际版本不是上述示例时，最后推送的标签也必须改为相应版本。
@@ -117,13 +118,17 @@ git push origin v0.1.8
 
 从 `0.1.5` 或更早版本迁移时，需要先手动安装一次支持更新的版本。安装前在系统托盘中选择「退出舰桥」。应用保留已有配置与连接记录；迁移后可先确认原有服务商能够正常使用。
 
+### 每日用量统计
+
+`0.1.8` 增加中文每日 Token 热力图，并将累计用量与最近 300 条连接明细分开保存。首次升级只迁移仍保留的记录，无法补回已淘汰的历史；未收到有效用量的请求不会估算为消耗。普通清空只删除连接明细，勾选「同时清空每日用量统计与累计 Tokens」才会重置统计。累计达到 10 亿显示为 `1B`，100 亿显示为 `10B`，悬停可查看精确值。
+
 ## 6. 本地构建发布文件
 
 本地打包使用项目自身的发布脚本。需要生成可用的 GitHub 更新配置时，先设置实际仓库地址：
 
 ```powershell
 npm run dist -- --require-repository
-node scripts/check-release.cjs v0.1.7 --assets
+node scripts/check-release.cjs v0.1.8 --assets
 ```
 
 项目配置已填写实际的 `repository.url`，本地构建无需额外设置更新仓库。脚本优先读取 `GITHUB_REPOSITORY`，未设置时读取项目配置；Fork 发布时应相应修改仓库地址与源码入口。

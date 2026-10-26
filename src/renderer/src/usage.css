@@ -1,0 +1,68 @@
+.usage-panel {
+  --usage-empty: #edf2ef;
+  --usage-one: #c5e8cc;
+  --usage-two: #7ac78e;
+  --usage-three: #389e63;
+  --usage-four: #166d42;
+  --usage-border: #dce7e0;
+  --usage-muted: #71857a;
+  padding: 22px 24px 18px;
+  margin-bottom: 20px;
+  min-width: 0;
+}
+.usage-heading, .usage-footer, .usage-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.usage-heading { margin-bottom: 22px; }
+.usage-heading h2 { display: flex; align-items: center; gap: 9px; font-size: 17px; }
+.usage-heading h2 svg { color: #268665; }
+.usage-heading p { color: var(--usage-muted); font-size: 12px; margin-top: 7px; }
+.usage-heading p strong { color: #268665; font-weight: 600; }
+.usage-heading .select-wrap { height: 35px; min-width: 110px; font-size: 12px; }
+.usage-scroll { overflow-x: auto; padding: 3px 3px 8px; }
+.usage-scroll:focus-visible { outline: 2px solid #399b7a; outline-offset: 2px; border-radius: 4px; }
+.usage-calendar { display: grid; grid-template-columns: 32px minmax(0, 1fr); grid-template-rows: 20px auto; gap: 5px 8px; min-width: 745px; }
+.usage-months { grid-column: 2; display: grid; grid-template-columns: repeat(var(--usage-columns), minmax(0, 1fr)); gap: 3px; color: var(--usage-muted); font-size: 11px; }
+.usage-months span { white-space: nowrap; }
+.usage-weekdays { grid-row: 2; display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px; color: var(--usage-muted); font-size: 10px; align-items: center; }
+.usage-cells { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr); grid-template-columns: repeat(var(--usage-columns), minmax(0, 1fr)); gap: 3px; }
+.usage-cell { display: block; width: 100%; aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid var(--usage-border); border-radius: 2px; background: var(--usage-empty); }
+button.usage-cell { cursor: pointer; }
+.usage-cell[data-level="1"] { background: var(--usage-one); border-color: var(--usage-one); }
+.usage-cell[data-level="2"] { background: var(--usage-two); border-color: var(--usage-two); }
+.usage-cell[data-level="3"] { background: var(--usage-three); border-color: var(--usage-three); }
+.usage-cell[data-level="4"] { background: var(--usage-four); border-color: var(--usage-four); }
+button.usage-cell:hover, button.usage-cell:focus-visible { outline: 2px solid #268665; outline-offset: 1px; position: relative; z-index: 1; }
+button.usage-cell[aria-pressed="true"] { box-shadow: 0 0 0 1px #268665; }
+.usage-cell.unrecorded { background: transparent; border-style: dashed; opacity: .55; }
+.usage-cell.usage-unknown { background: repeating-linear-gradient(135deg, var(--usage-empty) 0 3px, var(--usage-border) 3px 5px); }
+.usage-cell.usage-padding { visibility: hidden; }
+.usage-footer { color: var(--usage-muted); font-size: 11px; margin-top: 6px; flex-wrap: wrap; }
+.usage-legend { gap: 4px; justify-content: flex-end; }
+.usage-legend i { width: 11px; height: 11px; }
+.usage-legend span { margin: 0 3px; }
+.usage-day-detail { font-size: 12px; line-height: 1.7; margin-top: 14px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.usage-explanation { color: var(--usage-muted); font-size: 11px; line-height: 1.7; margin-top: 8px; }
+.usage-explanation summary { cursor: pointer; width: fit-content; }
+.usage-explanation summary svg { display: inline; vertical-align: -2px; margin: 0 4px; }
+.usage-explanation p { margin: 6px 0 0; }
+.about-settings { padding: 20px 24px; margin-top: 20px; }
+.about-settings .settings-heading { margin-bottom: 12px; }
+.about-settings > p { font-size: 13px; line-height: 1.9; color: #71857a; }
+.about-settings a { color: #258064; text-decoration: underline; text-underline-offset: 3px; }
+.about-settings a:focus-visible { outline: 2px solid #399b7a; outline-offset: 3px; }
+.clear-usage-option { display: flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 13px; line-height: 1.6; }
+.clear-usage-option input { accent-color: #268665; }
+html[data-theme=dark] .usage-panel {
+  --usage-empty: #263e32;
+  --usage-one: #245a3b;
+  --usage-two: #348654;
+  --usage-three: #65b77b;
+  --usage-four: #a4dfb0;
+  --usage-border: #3b5646;
+  --usage-muted: #a0b9ad;
+}
+html[data-theme=dark] .usage-heading p strong, html[data-theme=dark] .usage-heading h2 svg, html[data-theme=dark] .about-settings a { color: #a2e0bd; }
+html[data-theme=dark] .about-settings > p { color: #a0b9ad; }
+@media (max-width: 1240px) {
+  .usage-panel { padding: 18px 16px; }
+  .about-settings { padding: 18px 16px; }
+}

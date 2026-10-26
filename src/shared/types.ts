@@ -59,6 +59,17 @@ export interface RequestLog {
   note?: string
   legacyRecord?: boolean
 }
+export interface DailyUsage {
+  date: string
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  unknownUsageRequests: number
+}
+export interface UsageHistory {
+  since: string
+  daily: DailyUsage[]
+}
 export interface CodexStatus {
   connected: boolean
   configPath: string
@@ -74,6 +85,7 @@ export interface Snapshot {
   gateway: { running: boolean; url: string; error?: string; inflight: number }
   codex: CodexStatus
   logs: RequestLog[]
+  usage: UsageHistory
   dataPath: string
   vault: string
   version: string
@@ -112,7 +124,7 @@ export interface FleetAPI {
   connectCodex(): Promise<Snapshot>
   restoreCodex(): Promise<Snapshot>
   saveSettings(settings: Settings): Promise<Snapshot>
-  clearLogs(): Promise<Snapshot>
+  clearLogs(clearUsage?: boolean): Promise<Snapshot>
   openDataFolder(): Promise<void>
   openCodexFolder(): Promise<void>
   exportLogs(): Promise<boolean>
@@ -126,5 +138,6 @@ export interface FleetAPI {
   installUpdate(): Promise<void>
   openUpdatePage(): Promise<void>
   openRepository(): Promise<void>
+  openIssues(): Promise<void>
   onUpdateState(listener: (state: UpdateState) => void): () => void
 }

@@ -19,7 +19,7 @@ const api: FleetAPI = {
   connectCodex: () => invoke('connectCodex'),
   restoreCodex: () => invoke('restoreCodex'),
   saveSettings: settings => invoke('saveSettings', settings),
-  clearLogs: () => invoke('clearLogs'),
+  clearLogs: clearUsage => invoke('clearLogs', clearUsage),
   openDataFolder: () => invoke('openDataFolder'),
   openCodexFolder: () => invoke('openCodexFolder'),
   exportLogs: () => invoke('exportLogs'),
@@ -32,6 +32,7 @@ const api: FleetAPI = {
   installUpdate: () => invoke('installUpdate'),
   openUpdatePage: () => invoke('openUpdatePage'),
   openRepository: () => invoke('openRepository'),
+  openIssues: () => invoke('openIssues'),
   onUpdateState: listener => {
     const handle = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]) => listener(state)
     ipcRenderer.on('fleet:update-state', handle)

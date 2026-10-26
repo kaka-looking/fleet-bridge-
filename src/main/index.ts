@@ -10,7 +10,7 @@ import { formatLogsCsv } from './log-export'
 import { autoUpdater } from 'electron-updater'
 import { Updates } from './updates'
 import type { Settings, WindowState } from '../shared/types'
-import { REPOSITORY_URL } from '../shared/project'
+import { ISSUES_URL, REPOSITORY_URL } from '../shared/project'
 
 if (process.env.FLEET_DATA_DIR) app.setPath('userData', process.env.FLEET_DATA_DIR)
 app.commandLine.appendSwitch('disable-lcd-text')
@@ -95,6 +95,10 @@ else {
     ipcMain.handle('fleet:openRepository', event => {
       if (event.sender !== window?.webContents) throw new Error('非法调用来源。')
       return shell.openExternal(REPOSITORY_URL)
+    })
+    ipcMain.handle('fleet:openIssues', event => {
+      if (event.sender !== window?.webContents) throw new Error('非法调用来源。')
+      return shell.openExternal(ISSUES_URL)
     })
     ipcMain.handle('fleet:windowState', event => {
       if (event.sender !== window?.webContents) throw new Error('非法调用来源。')
